@@ -1,0 +1,1434 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>html{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} img{max-width:100%}</style>
+<title>Serra de Bolso</title>
+<meta name="theme-color" content="#f4e3b0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Karla:ital,wght@0,400;0,500;0,700;1,400&family=Caveat:wght@500;700&display=swap">
+<style>
+/* Layout: app de celular. Mapa-relevo ocupa a tela; cards das paradas deslizam por cima;
+   mini-player e barra de abas embaixo; tudo que abre sobe como folha (bottom sheet).
+   Cada parada troca o "humor" (manhã, tarde, entardecer, noite) — é o tema do app. */
+@property --tx   { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --ty   { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --tilt { syntax: '<angle>';  inherits: true; initial-value: 0deg; }
+@property --rot  { syntax: '<angle>';  inherits: true; initial-value: 0deg; }
+@property --s    { syntax: '<number>'; inherits: true; initial-value: 1; }
+
+:root {
+  --bg: #f4e3b0; --bg2: #ead39a; --card: #fbf1d3; --ink: #2b2614; --muted: #6d6239;
+  --line: rgba(60, 50, 20, .18); --accent: #c8601c; --accent-ink: #fff6e6; --moss: #55682a;
+  --sky1: #f9cf6e; --sky2: #f4e3b0; --star-op: 0; --glow-op: 0;
+  --wood: #191512; --wood-ink: #f3e6cf; --wood-muted: #b9a585; --gold: #f6b866;
+  --desk: #2a2018;
+  --f-display: 'Young Serif', 'Iowan Old Style', Georgia, serif;
+  --f-body: 'Karla', 'Segoe UI', system-ui, sans-serif;
+  --f-hand: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
+  --ease: cubic-bezier(.6, .05, .2, 1);
+  color-scheme: light;
+}
+:root[data-mood="tarde"] { --bg: #e9d8b4; --bg2: #dcc496; --card: #f4e8cc; --ink: #2a2316; --muted: #6a5a3b; --line: rgba(60,45,20,.18); --accent: #a9541f; --moss: #4c5d27; --sky1: #e9b979; --sky2: #e9d8b4; }
+:root[data-mood="entardecer"] { --bg: #e2ad84; --bg2: #d39570; --card: #f1d2b4; --ink: #2a1610; --muted: #6e3f2c; --line: rgba(70,30,15,.2); --accent: #8f3320; --accent-ink: #ffeede; --moss: #44502a; --sky1: #8a4d62; --sky2: #eea06a; }
+:root[data-mood="noite"] { --bg: #120e10; --bg2: #1c1518; --card: #211a1c; --ink: #f2e5cf; --muted: #b19d84; --line: rgba(242,229,207,.14); --accent: #f0a04b; --accent-ink: #1b0f06; --moss: #9fae6b; --sky1: #070915; --sky2: #241a33; --star-op: 1; --glow-op: 1; color-scheme: dark; }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(ellipse at 50% 0%, #3d2e20, var(--desk) 70%); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.45; overflow: hidden;
+  display: grid; place-items: center;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible, label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance; margin: 0; }
+
+/* ---------- casca do app ---------- */
+.shell {
+  position: relative; width: 100%; height: 100%; overflow: hidden; isolation: isolate;
+  background: var(--bg); transition: background-color 1.4s ease, color 1.4s ease;
+  display: grid; grid-template-rows: minmax(0, 1fr) auto auto; grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 560px) { /* no computador: um "celular" na mesa */
+  .shell { width: 420px; height: min(100% - 32px, 880px); border-radius: 38px; box-shadow: 0 40px 90px -30px #000, 0 0 0 10px #0d0a08, 0 0 0 11px #3a2c20; }
+}
+.shell::after { /* lareira pulsante, só de noite */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse 80% 100% at 50% 115%, rgba(240,120,40,.35), rgba(200,60,20,.1) 45%, transparent 75%);
+  opacity: var(--glow-op); transition: opacity 1.6s; animation: lareira 2.8s ease-in-out infinite;
+}
+@keyframes lareira { 0%,100% { transform: scaleY(1); } 30% { transform: scaleY(1.08); } 55% { transform: scaleY(.95); } 75% { transform: scaleY(1.04); } }
+.content { position: relative; grid-row: 1; overflow: hidden; }
+
+/* ---------- mapa ---------- */
+.stage { position: absolute; inset: 0; overflow: hidden; perspective: 1000px; perspective-origin: 50% 35%;
+  background: linear-gradient(180deg, var(--sky1), var(--sky2) 60%); }
+.stars { position: absolute; inset: 0; width: 100%; height: 100%; opacity: var(--star-op); transition: opacity 2s; }
+.world {
+  position: absolute; left: -25%; top: -25%; width: 150%; height: 150%; transform-style: preserve-3d;
+  transform: translate(var(--tx), var(--ty)) rotateX(var(--tilt)) rotateZ(var(--rot)) scale3d(var(--s), var(--s), var(--s));
+  transition: --tx 1.8s var(--ease), --ty 1.8s var(--ease), --tilt 1.8s var(--ease), --rot 1.8s var(--ease), --s 1.8s var(--ease), transform-origin 1.8s var(--ease);
+}
+.world.free { transition: none; }
+.world canvas.layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.world svg.route { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.marks { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
+.route .base { fill: none; stroke: var(--ink); stroke-opacity: .28; stroke-width: 2.5; stroke-dasharray: 2 7; stroke-linecap: round; }
+.route .prog { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 1.8s var(--ease) .3s; }
+.place-label { position: absolute; transform-origin: 0 0; white-space: nowrap; pointer-events: none; font-family: var(--f-display); color: var(--ink); opacity: .7; letter-spacing: .16em; text-transform: uppercase; }
+.place-label.small { font-family: var(--f-hand); text-transform: none; letter-spacing: 0; font-size: 18px; opacity: .8; }
+.pin { position: absolute; width: 0; height: 0; transform-origin: 0 0;
+  transform: translateZ(var(--z, 0px)) scale3d(calc(1 / var(--s)), calc(1 / var(--s)), calc(1 / var(--s))) rotateZ(calc(var(--rot) * -1)) rotateX(calc(var(--tilt) * -1)); }
+.pin button { position: absolute; left: -22px; bottom: 0; width: 44px; height: 54px; border: 0; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+.pin .head { width: 32px; height: 32px; margin-top: 4px; border-radius: 50%; display: grid; place-items: center; background: var(--card); color: var(--ink); border: 2.5px solid var(--ink); font-weight: 700; font-size: 13px; box-shadow: 0 6px 14px -6px rgba(0,0,0,.6); transition: transform .3s, background-color .4s, color .4s, border-color .4s; position: relative; }
+.pin .stem { width: 2.5px; flex: 1; background: var(--ink); }
+.pin .tag { position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--ink); color: var(--bg); font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; opacity: 0; transition: opacity .3s; pointer-events: none; }
+.pin.active .tag { opacity: 1; }
+.pin.active .head { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); transform: scale(1.15); }
+.pin.active .head::after, .pin.pulse .head::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--accent); animation: ring 1.8s ease-out infinite; }
+.pin.preview .head { border-style: dashed; opacity: .8; }
+@keyframes ring { from { transform: scale(1); opacity: .9; } to { transform: scale(2.4); opacity: 0; } }
+
+/* topo sobre o mapa */
+.topbar {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 5; padding: 12px 14px 22px;
+  background: linear-gradient(180deg, var(--bg) 55%, color-mix(in srgb, var(--bg) 0%, transparent));
+  display: grid; gap: 10px; transition: background .1s;
+}
+.tb-row { display: flex; align-items: center; gap: 10px; }
+.tb-title { min-width: 0; flex: 1; }
+.tb-title h1 { font-size: 21px; line-height: 1.05; }
+.tb-title .sub { font-family: var(--f-hand); font-size: 19px; color: var(--accent); line-height: 1; }
+.round { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; flex: none; transition: background-color 1.4s; }
+.round svg { width: 19px; height: 19px; }
+.round[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.days { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 999px; background: var(--bg2); transition: background-color 1.4s; }
+.days button { border: 0; background: transparent; padding: 7px 4px; border-radius: 999px; font-size: 12.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.days button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.days button svg { width: 11px; height: 11px; }
+
+.map-ctrl { position: absolute; right: 12px; z-index: 4; display: flex; flex-direction: column; gap: 8px; top: 132px; }
+.map-ctrl .round { width: 40px; height: 40px; background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(6px); }
+.map-ctrl .compass { transition: transform 1.8s var(--ease); }
+.hud { position: absolute; left: 12px; top: 132px; right: 64px; z-index: 4; pointer-events: none; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.hud-card { background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(6px); border-radius: 12px; padding: 6px 10px; font-size: 12px; box-shadow: 0 6px 20px -12px rgba(0,0,0,.5); max-width: 100%; transition: background-color 1.4s; }
+.hud-card b { font-family: var(--f-display); font-weight: 400; font-size: 14px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coords { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 11px; }
+.mode3d { display: none; font-weight: 700; color: var(--accent); }
+.stage.is3d ~ .hud .mode3d { display: block; }
+#gmap { position: absolute; inset: 0; z-index: 3; }
+
+/* ---------- carrossel de paradas ---------- */
+.carousel {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; gap: 10px; overflow-x: auto;
+  scroll-snap-type: x mandatory; padding: 26px 9% 12px; scroll-padding: 0 9%; scrollbar-width: none;
+  background: linear-gradient(0deg, color-mix(in srgb, var(--bg) 70%, transparent), transparent);
+  transition: transform .5s var(--ease), opacity .4s;
+}
+.carousel::-webkit-scrollbar { display: none; }
+.shell.touring .carousel { transform: translateY(110%); opacity: 0; pointer-events: none; }
+.card {
+  flex: 0 0 100%; scroll-snap-align: center; scroll-snap-stop: always; position: relative;
+  background: var(--card); border-radius: 20px; padding: 14px 14px 12px; box-shadow: 0 16px 30px -18px rgba(0,0,0,.6);
+  display: flex; flex-direction: column; gap: 4px; transition: background-color 1.4s, transform .4s, opacity .4s;
+  transform: scale(.94); opacity: .75;
+}
+.card.active { transform: scale(1); opacity: 1; }
+.c-top { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.c-num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--bg); font-size: 12px; }
+.card.active .c-num { background: var(--accent); color: var(--accent-ink); }
+.c-time { font-variant-numeric: tabular-nums; }
+.when { color: var(--accent); }
+.card h3 { font-size: 19px; line-height: 1.15; padding-right: 28px; }
+.card .place { font-size: 13px; color: var(--muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.btn { border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 700; font-size: 14px; background: var(--ink); color: var(--bg); display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: transform .15s, background-color 1.4s, color 1.4s; min-height: 42px; }
+.btn.alt { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn.gold { background: var(--gold); color: #1b0f06; }
+.btn:active, .round:active { transform: scale(.95); }
+.btn svg { width: 15px; height: 15px; }
+.heart { position: absolute; right: 8px; top: 8px; width: 38px; height: 38px; border: 0; padding: 8px; background: transparent; color: var(--accent); opacity: .3; transition: opacity .3s, transform .3s; }
+.heart svg { width: 100%; height: 100%; }
+.heart.found { opacity: .95; }
+.heart:active { transform: scale(1.3); }
+.card.locked, .card.teaser { align-items: center; text-align: center; gap: 8px; }
+.card.teaser { background: color-mix(in srgb, var(--card) 70%, transparent); border: 1.5px dashed var(--line); }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+/* retrospectiva sobre o mapa */
+.tour-card { position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 6; display: flex; gap: 12px; align-items: center; background: rgba(20,14,10,.86); color: var(--wood-ink); border-radius: 18px; padding: 12px; backdrop-filter: blur(6px); animation: rise .5s var(--ease); overflow: hidden; }
+.tour-card img, .tour-card .noimg { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; flex: none; border: 3px solid #fff; }
+.tour-card .noimg { display: grid; place-items: center; background: #3a2a1e; color: var(--gold); font-family: var(--f-hand); font-size: 26px; border-color: #3a2a1e; }
+.tour-card .tt { min-width: 0; flex: 1; }
+.tour-card small { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--wood-muted); font-weight: 700; }
+.tour-card b { font-family: var(--f-display); font-weight: 400; font-size: 16px; display: block; line-height: 1.2; }
+.tour-card span { font-family: var(--f-hand); font-size: 18px; color: var(--gold); }
+.tour-card .skip { border: 1px solid rgba(255,255,255,.25); background: transparent; color: var(--wood-ink); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; flex: none; }
+.tour-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--gold); transition: width .4s; }
+
+/* ---------- páginas (rádio, álbum, nós) ---------- */
+.page { position: absolute; inset: 0; z-index: 7; overflow-y: auto; padding: 18px 16px 24px; background: var(--bg); animation: pagein .35s var(--ease); transition: background-color 1.4s; overscroll-behavior: contain; }
+@keyframes pagein { from { opacity: 0; transform: translateY(12px); } }
+.page > header { display: grid; gap: 2px; margin-bottom: 16px; }
+.page h2 { font-size: 28px; line-height: 1.05; }
+
+.page.radio { background: linear-gradient(170deg, #3b2617, #1d120c); color: var(--wood-ink); }
+.page.radio .eyebrow { color: #c9a77c; }
+.radio-box { border-radius: 22px; padding: 18px; background: linear-gradient(160deg, #4a3020, #2a1a10); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 20px 40px -20px #000; display: grid; gap: 14px; }
+.radio-display { border-radius: 14px; padding: 14px 16px; background: #120b06; box-shadow: inset 0 0 0 1px rgba(255,180,90,.15), inset 0 8px 24px rgba(0,0,0,.6); display: grid; gap: 2px; }
+.radio-freq { font-family: var(--f-display); font-size: 52px; line-height: 1; color: #ffb347; text-shadow: 0 0 14px rgba(255,170,60,.55); font-variant-numeric: tabular-nums; }
+.radio-freq small { font-size: 16px; margin-left: 6px; color: #c98a3a; }
+.radio-name { font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; color: #e5c08e; min-height: 1.4em; }
+.radio-desc { font-size: 13px; color: #a88a66; min-height: 1.4em; }
+.dial { position: relative; padding: 4px 0 22px; }
+.dial input { width: 100%; accent-color: #ffb347; height: 30px; }
+.dial .ticks { position: absolute; left: 10px; right: 10px; bottom: 0; height: 16px; font-size: 11px; color: #a88a66; font-variant-numeric: tabular-nums; }
+.dial .ticks span { position: absolute; transform: translateX(-50%); }
+.dial .ticks i { position: absolute; top: -10px; width: 2px; height: 6px; background: #ffb347; transform: translateX(-50%); }
+.radio-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.radio-btns .btn { background: rgba(255,255,255,.08); color: var(--wood-ink); }
+.radio-btns .btn.on { background: #ffb347; color: #1b0f06; }
+.dedica { font-family: var(--f-hand); font-size: 25px; line-height: 1.2; color: #f6d39b; min-height: 2.4em; white-space: pre-line; margin: 6px 2px 0; }
+.page.radio .hint { color: #a88a66; }
+
+.album-day { font-family: var(--f-hand); font-size: 28px; color: var(--accent); margin: 18px 0 6px; }
+.album-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
+.album-grid figure { margin: 0; background: #fbf4e6; padding: 6px 6px 38px; position: relative; box-shadow: 0 12px 24px -14px rgba(0,0,0,.7); border: 0; cursor: pointer; }
+.album-grid figure:nth-child(odd) { transform: rotate(-2deg); } .album-grid figure:nth-child(even) { transform: rotate(1.6deg); }
+.album-grid .ph { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.album-grid .ph.empty { display: grid; place-items: center; color: #8f7a5c; font-size: 12px; text-align: center; padding: 8px; background: repeating-linear-gradient(45deg, #efe2c8 0 10px, #e9dbbe 10px 20px); }
+.album-grid figcaption { position: absolute; left: 6px; right: 6px; bottom: 5px; text-align: center; font-family: var(--f-hand); font-size: 17px; color: #3a2412; line-height: 1; }
+.album-grid figcaption small { display: block; font-family: var(--f-body); font-size: 10px; letter-spacing: .1em; color: #8d6a4a; margin-top: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stats div { background: var(--card); border-radius: 14px; padding: 12px; transition: background-color 1.4s; }
+.stats b { display: block; font-family: var(--f-display); font-weight: 400; font-size: 28px; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stats span { font-size: 12.5px; color: var(--muted); }
+.big-actions { display: grid; gap: 10px; margin: 16px 0; }
+.big-actions .btn { min-height: 52px; font-size: 15px; justify-content: flex-start; padding-inline: 18px; }
+.tips { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.tips li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 14px; }
+.tips li span:first-child { width: 30px; height: 30px; border-radius: 50%; background: var(--bg2); display: grid; place-items: center; color: var(--accent); }
+.tips svg { width: 15px; height: 15px; }
+.section-title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 22px 0 10px; }
+
+/* ---------- mini-player e abas ---------- */
+.player { grid-row: 2; position: relative; z-index: 8; background: var(--wood); color: var(--wood-ink); display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; }
+.p-bar { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: rgba(255,255,255,.1); }
+.p-bar i { display: block; height: 100%; width: 0; background: var(--gold); }
+.vinyl { width: 40px; height: 40px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle, var(--accent) 0 17%, var(--wood) 17.5% 20%, transparent 20.5%), repeating-radial-gradient(circle, #2a2420 0 1.5px, #13100e 1.5px 3px);
+  animation: spin 3.2s linear infinite; animation-play-state: paused; }
+.player.playing .vinyl { animation-play-state: running; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.p-meta { min-width: 0; flex: 1; }
+.p-vibe { font-family: var(--f-hand); font-size: 19px; line-height: 1; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-track { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-track span { color: var(--wood-muted); }
+.p-ctrl { display: flex; align-items: center; gap: 2px; }
+.p-ctrl button, .p-ctrl a { border: 0; background: transparent; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--wood-ink); }
+.p-ctrl .play { background: var(--wood-ink); color: var(--wood); width: 40px; height: 40px; }
+.p-ctrl svg { width: 16px; height: 16px; }
+
+.tabbar { grid-row: 3; z-index: 8; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--wood); border-top: 1px solid rgba(255,255,255,.06); padding: 4px 6px 6px; }
+.tabbar button { border: 0; background: transparent; color: var(--wood-muted); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; border-radius: 12px; }
+.tabbar button svg { width: 22px; height: 22px; }
+.tabbar button[aria-selected="true"] { color: var(--gold); }
+.tabbar button[aria-selected="true"] svg { transform: translateY(-1px); }
+
+/* ---------- capa ---------- */
+.cover { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px 22px; background: radial-gradient(ellipse at 50% 120%, #6b3c1c 0%, #20140f 55%, #0e0a09 100%); color: var(--wood-ink); transition: opacity 1.2s, visibility 1.2s; text-align: center; }
+.cover.gone { opacity: 0; visibility: hidden; }
+.cover-inner { display: flex; flex-direction: column; gap: 14px; align-items: center; max-width: 360px; }
+.cover .for { font-family: var(--f-hand); font-size: 28px; color: var(--gold); }
+.cover h2 { font-size: 46px; line-height: .95; }
+.cover p { margin: 0; color: #cdb999; font-size: 15px; }
+.cover .count { font-variant-numeric: tabular-nums; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--wood-muted); }
+.cover .btn { background: var(--gold); color: #1b0f06; padding: 14px 28px; font-size: 16px; margin-top: 8px; }
+.cover .ridge { width: 100%; height: auto; }
+
+/* ---------- folhas (bottom sheets) ---------- */
+.overlay { position: absolute; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(15,10,8,.5); animation: fade .3s ease; }
+@keyframes fade { from { opacity: 0; } }
+.sheet { width: 100%; max-height: 90%; overflow-y: auto; overscroll-behavior: contain; background: var(--card); color: var(--ink); border-radius: 24px 24px 0 0; padding: 8px 18px 24px; box-shadow: 0 -20px 60px -20px rgba(0,0,0,.6); animation: up .45s var(--ease); position: relative; touch-action: pan-y; }
+@keyframes up { from { transform: translateY(100%); } }
+@keyframes rise { from { transform: translateY(20px); opacity: 0; } }
+.grab { display: block; width: 100%; height: 26px; border: 0; background: transparent; position: sticky; top: -8px; z-index: 1; touch-action: none; }
+.grab::before { content: ""; display: block; width: 44px; height: 5px; border-radius: 5px; background: var(--line); margin: 6px auto 0; }
+.sheet h2 { font-size: 25px; }
+.tabs { display: flex; gap: 4px; margin: 14px 0; padding: 4px; background: var(--bg2); border-radius: 999px; }
+.tabs button { flex: 1; border: 0; background: transparent; padding: 8px 4px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.desc { font-size: 15px; margin: 10px 0 12px; }
+.vibe { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--moss); }
+.vibe::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.tracks { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 2px; }
+.tracks a { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; font-size: 14px; }
+.tracks a span { color: var(--muted); white-space: nowrap; }
+.thumb { margin-top: 14px; width: 70%; aspect-ratio: 4/3; object-fit: cover; border: 6px solid #fff; box-shadow: 0 6px 18px -8px rgba(0,0,0,.5); transform: rotate(-1.5deg); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+
+.ticket { position: relative; background: #f6e2b8; color: #3a2412; border-radius: 10px; padding: 18px 18px 18px 24px; border-left: 2px dashed rgba(58,36,18,.35); overflow: hidden; }
+.ticket .t-kind { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; font-weight: 700; color: #8d4a1c; }
+.ticket .t-title { font-family: var(--f-display); font-size: 28px; line-height: 1; margin: 4px 0 8px; }
+.ticket .t-text { font-family: var(--f-hand); font-size: 25px; line-height: 1.15; }
+.ticket .t-foot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 11.5px; font-variant-numeric: tabular-nums; color: #7a5a3a; gap: 8px; flex-wrap: wrap; }
+.stamp { position: absolute; right: 14px; top: 20px; border: 3px solid #b0301e; color: #b0301e; font-weight: 700; letter-spacing: .12em; padding: 4px 10px; border-radius: 6px; transform: rotate(-14deg); font-size: 14px; opacity: .85; }
+.stamp.fresh { animation: stamp .5s cubic-bezier(.2,1.6,.4,1); }
+@keyframes stamp { from { transform: rotate(-14deg) scale(2.6); opacity: 0; } }
+.photo-drop { display: grid; place-items: center; text-align: center; gap: 6px; border: 2px dashed var(--line); border-radius: 16px; padding: 28px 16px; cursor: pointer; color: var(--muted); position: relative; }
+.photo-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.photo-drop b { color: var(--ink); font-size: 16px; }
+.polaroid { background: #fff; padding: 10px 10px 40px; box-shadow: 0 12px 30px -12px rgba(0,0,0,.5); transform: rotate(-2deg); position: relative; margin: 0 auto 16px; max-width: 300px; }
+.polaroid img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.polaroid figcaption { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-family: var(--f-hand); font-size: 22px; color: #3a2412; }
+.question { font-family: var(--f-hand); font-size: 32px; line-height: 1.1; margin: 8px 0 14px; }
+
+.seal-wrap { display: grid; place-items: center; gap: 12px; padding: 16px 0 8px; text-align: center; }
+.seal { width: 104px; height: 104px; border-radius: 50%; border: 0; position: relative; background: radial-gradient(circle at 35% 30%, #d4553f, #8e1d14 70%); color: #f7d7b0; box-shadow: 0 8px 20px -6px rgba(80,10,0,.7), inset 0 -6px 12px rgba(0,0,0,.25); font-family: var(--f-hand); font-size: 34px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; flex: none; }
+.seal.sm { width: 72px; height: 72px; font-size: 26px; }
+.seal::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; opacity: 0; background: conic-gradient(var(--gold) calc(var(--hold, 0) * 1turn), transparent 0); -webkit-mask: radial-gradient(circle, transparent calc(50% - 7px), #000 calc(50% - 6px)); mask: radial-gradient(circle, transparent calc(50% - 7px), #000 calc(50% - 6px)); }
+.seal.holding::before { opacity: 1; }
+.lock-note { font-size: 13px; color: var(--muted); }
+.letter-sheet { background: #f3e2c2; color: #2f1d10; }
+.letter-sheet .lock-note { color: #6e4c2c; }
+.letter-text { font-family: var(--f-hand); font-size: 25px; line-height: 1.25; white-space: pre-line; animation: rise .8s var(--ease); }
+.recap { background: #1a1412; color: var(--wood-ink); }
+.recap .eyebrow { color: var(--wood-muted); }
+.recap .stats div { background: rgba(255,255,255,.05); }
+.recap .stats b { color: var(--gold); }
+.recap .stats span { color: #cdb999; }
+.final-note { font-family: var(--f-hand); font-size: 25px; line-height: 1.2; color: #f6d39b; white-space: pre-line; margin: 16px 0 0; }
+
+.toast { position: absolute; left: 50%; top: 12px; transform: translateX(-50%) translateY(-160%); z-index: 70; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 700; font-size: 13.5px; box-shadow: 0 14px 30px -12px rgba(0,0,0,.6); transition: transform .5s var(--ease), visibility .5s; width: max-content; max-width: calc(100% - 32px); text-align: center; visibility: hidden; }
+.toast.show { transform: translateX(-50%) translateY(0); visibility: visible; }
+
+.embers { position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: var(--glow-op); transition: opacity 1.6s; overflow: hidden; }
+.embers i { position: absolute; bottom: -10px; width: 4px; height: 4px; border-radius: 50%; background: #ffb35c; box-shadow: 0 0 8px 2px rgba(255,140,40,.7); animation: ember linear infinite; }
+@keyframes ember { 0% { transform: translate(0,0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translate(var(--dx, 20px), -70vh); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .world { transition-duration: .4s; }
+}
+</style>
+</head>
+<body>
+
+
+<div class="shell" id="shell">
+  <div class="content" id="content">
+    <div class="stage" id="stage">
+      <canvas class="stars" id="stars" aria-hidden="true"></canvas>
+      <div class="world" id="world"></div>
+    </div>
+    <div class="hud" aria-live="polite">
+      <div class="hud-card"><b id="hud-title">Serra da Mantiqueira</b><span class="coords" id="hud-coords">22°23′S · 44°32′O</span></div>
+      <div class="hud-card mode3d">Relevo 3D</div>
+    </div>
+    <div class="map-ctrl">
+      <button class="round compass" id="compass" type="button" aria-label="Ver o mapa inteiro">
+        <svg viewBox="0 0 24 24"><path d="M12 2 15 12H9z" fill="var(--accent)"/><path d="M12 22 9 12h6z" fill="var(--ink)" opacity=".5"/></svg>
+      </button>
+      <button class="round" id="btn-gmaps" type="button" aria-label="Mapa real do Google">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>
+      </button>
+    </div>
+
+    <header class="topbar">
+      <div class="tb-row">
+        <div class="tb-title"><h1>Fim de Semana na Serra</h1><span class="sub" id="date-sub">sábado</span></div>
+        <button class="round" id="btn-sound" type="button" aria-pressed="false" aria-label="Ligar o som">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path id="snd-wave" d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg>
+        </button>
+      </div>
+      <nav class="days" id="days" aria-label="Dias do roteiro"></nav>
+    </header>
+
+    <div class="carousel" id="carousel" aria-label="Paradas do dia"></div>
+
+    <div class="tour-card" id="tour-card" hidden>
+      <div id="tour-img"></div>
+      <div class="tt"><small id="tour-day"></small><b id="tour-title"></b><span id="tour-line"></span></div>
+      <button class="skip" type="button" id="tour-skip">Pular</button>
+      <i class="tour-bar" id="tour-bar"></i>
+    </div>
+
+    <section class="page radio" id="page-radio" hidden>
+      <header><span class="eyebrow">Rádio da Serra</span><h2>Sintoniza aí</h2></header>
+      <div class="radio-box">
+        <div class="radio-display" aria-live="polite">
+          <div class="radio-freq"><span id="r-freq">91.0</span><small>MHz</small></div>
+          <div class="radio-name" id="r-name"></div>
+          <div class="radio-desc" id="r-desc"></div>
+        </div>
+        <div class="dial">
+          <input type="range" id="r-dial" min="87.5" max="108" step="0.1" value="91" aria-label="Dial de frequência">
+          <div class="ticks" id="r-ticks" aria-hidden="true"></div>
+        </div>
+        <div class="radio-btns">
+          <button class="btn" type="button" id="r-power">Ligar</button>
+          <button class="btn" type="button" id="r-scan">Próxima estação</button>
+        </div>
+      </div>
+      <p class="dedica" id="r-dedica"></p>
+      <p class="hint">Quatro estações escondidas no dial. Uma delas tem recado. Bom pra subida e pra descida da serra.</p>
+    </section>
+
+    <section class="page" id="page-album" hidden>
+      <header><span class="eyebrow">Álbum</span><h2>O nosso postal</h2></header>
+      <div id="album"></div>
+      <p class="hint" id="album-hint"></p>
+    </section>
+
+    <section class="page" id="page-nos" hidden>
+      <header><span class="eyebrow" id="nos-eyebrow">Nós dois</span><h2>Placar do fim de semana</h2></header>
+      <div class="stats" id="nos-stats"></div>
+      <div class="big-actions">
+        <button class="btn" type="button" id="nos-retro"></button>
+        <button class="btn alt" type="button" id="nos-letter">Carta lacrada do fondue</button>
+      </div>
+      <div class="section-title">Como funciona</div>
+      <ul class="tips">
+        <li><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21z"/></svg></span><span>Deslize os cards embaixo do mapa. Cada parada leva o mapa até lá, muda as cores e troca o som.</span></li>
+        <li><span><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg></span><span>Cada card tem um coração. Ele guarda um vale-abraço, um lugar pra foto e uma pergunta.</span></li>
+        <li><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><span>Os próximos dias abrem na véspera, às 22h. Lacre é lacre (mas dá pra segurar 2 segundos).</span></li>
+        <li><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 9v6h4l5 4V5L8 9H4z"/></svg></span><span>Liga o som. Fotos e vales ficam salvos neste celular.</span></li>
+      </ul>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <div class="player" id="player" aria-label="Trilha da Nossa Viagem">
+    <div class="p-bar" aria-hidden="true"><i id="p-bar"></i></div>
+    <div class="vinyl" aria-hidden="true"></div>
+    <div class="p-meta"><div class="p-vibe" id="p-vibe">Folk para a Estrada</div><div class="p-track" id="p-track">Ho Hey <span>· The Lumineers</span></div></div>
+    <div class="p-ctrl">
+      <button type="button" class="play" id="p-play" aria-label="Tocar"><svg viewBox="0 0 24 24" fill="currentColor" id="p-play-ico"><path d="M7 4v16l13-8z"/></svg></button>
+      <button type="button" id="p-next" aria-label="Próxima faixa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+      <a id="p-link" href="https://open.spotify.com/search" target="_blank" rel="noopener" aria-label="Abrir no Spotify"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+    </div>
+  </div>
+
+  <nav class="tabbar" id="tabbar" role="tablist" aria-label="Seções">
+    <button role="tab" type="button" data-tab="viagem" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 20 6-11 4 6 3-4 5 9z"/></svg>Viagem</button>
+    <button role="tab" type="button" data-tab="radio" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="m7 8 9-5"/><circle cx="15.5" cy="14" r="2.5"/><path d="M6.5 12h4M6.5 16h4"/></svg>Rádio</button>
+    <button role="tab" type="button" data-tab="album" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 15 5-4 4 3 3-2 6 5"/><circle cx="15" cy="9" r="1.5"/></svg>Álbum</button>
+    <button role="tab" type="button" data-tab="nos" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20s-7-4.3-9-8.6C1.6 8.2 3.6 4.7 7 4.7c2 0 3.3 1.1 5 3 1.7-1.9 3-3 5-3 3.4 0 5.4 3.5 4 6.7-2 4.3-9 8.6-9 8.6z"/></svg>Nós</button>
+  </nav>
+
+  <div class="embers" id="embers" aria-hidden="true"></div>
+  <div id="modal-root"></div>
+
+  <div class="cover" id="cover" role="dialog" aria-modal="true" aria-labelledby="cover-title">
+    <div class="cover-inner">
+      <div class="for" id="cover-for">para você, meu amor</div>
+      <h2 id="cover-title">Fim de semana<br>na Serra</h2>
+      <svg class="ridge" viewBox="0 0 420 70" aria-hidden="true">
+        <path d="M0 70 L40 42 L70 52 L120 18 L160 40 L200 8 L245 38 L280 26 L330 50 L370 30 L420 56 L420 70 Z" fill="#3b2a1d"/>
+        <path d="M0 70 L60 55 L110 62 L170 44 L230 60 L300 48 L360 62 L420 52 L420 70 Z" fill="#55682a" opacity=".8"/>
+        <circle cx="330" cy="18" r="7" fill="#f6b866"/>
+      </svg>
+      <p>Penedo, a subida da serra, cachoeiras geladas, lareira, fondue e pizza na pedra. Três dias, um mapa e algumas surpresas escondidas.</p>
+      <div class="count" id="cover-count"></div>
+      <button class="btn" id="start" type="button">Começar a viagem</button>
+      <p style="font-size:12.5px;color:#9c8566">Liga o som do celular e tira do silencioso.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO — troque aqui antes da viagem
+   ===================================================================== */
+const CONFIG = {
+  HER_NAME: 'meu amor',                 // aparece na capa e na rádio
+  MY_NAME: 'eu',                        // quem manda a dedicatória na rádio
+  TRIP_SATURDAY: '2026-10-24',          // data do sábado (AAAA-MM-DD) — ativa o "modo ao vivo"
+  LOCK_DAYS: true,                      // domingo abre sábado 22h; segunda abre domingo 22h
+  GOOGLE_MAPS_API_KEY: '',              // chave da Maps JavaScript API (só funciona hospedado fora do Claude)
+  GOOGLE_MAP_ID: '',                    // Map ID vetorial (inclinação 3D real)
+  USE_REAL_GPS: false,                  // true = chegada automática pelo GPS (fora do Claude)
+  GEOFENCE_RADIUS_M: 250,
+  SOUND_URLS: {},                       // ex.: { escorrega: 'https://.../agua.mp3' } troca o som sintetizado
+  SPOTIFY_PLAYLISTS: {},                // ex.: { fondue: 'https://open.spotify.com/playlist/...' }
+  LOVE_LETTER: `Escreva aqui a sua carta.
+
+Algo como: por que você escolheu esse fim de semana,
+o que você sente quando olha pra ela do outro lado da mesa,
+e o que você quer viver com ela daqui pra frente.
+
+Ela só abre às 20:30 de sábado, com o fondue já na mesa.`,
+  RADIO_DEDICATORIA: `Alô, alô, ouvintes da Serra da Mantiqueira!
+Essa vai com todo o carinho para {ELA},
+que está aqui do lado, subindo a serra comigo.
+Obrigado por topar essa aventura. Te amo.`,
+  FINAL_NOTE: `Três dias, um monte de curvas, água gelada e queijo derretido.
+Obrigado por cada minuto.
+Já estou pensando na próxima.`
+};
+
+/* =====================================================================
+   ROTEIRO — x/y = posição no mapa estilizado (0–1). lat/lng aproximados: ajuste no Google Maps.
+   ===================================================================== */
+const DAYS = {
+  sab: { label: 'Sábado', off: 0, stops: [
+    { id: 'penedo', time: '10:30', title: 'Chegada em Penedo', place: 'Penedo · Itatiaia, RJ', mood: 'manha', x: .16, y: .78, lat: -22.4386, lng: -44.5262,
+      desc: 'A Pequena Finlândia do Brasil. Casinhas de enxaimel, cheiro de chocolate artesanal e o Rio das Pedras correndo do lado. Primeira parada: esticar as pernas e atravessar uma ponte de mãos dadas.',
+      vibe: 'Folk para a Estrada', tracks: [['Ho Hey', 'The Lumineers', 163], ['Tocando em Frente', 'Almir Sater', 245], ['Riptide', 'Vance Joy', 204]],
+      vale: 'Vale um abraço apertado na primeira ponte que a gente atravessar.',
+      perguntas: ['Se a gente abrisse um negócio aqui em Penedo, o que seria?', 'Qual cheiro te leva direto pra infância?', 'Qual foi a viagem mais aleatória que você já fez?'] },
+    { id: 'fritz', time: '12:00', title: 'Almoço na Casa do Fritz', place: 'Penedo', mood: 'manha', x: .27, y: .84, lat: -22.4368, lng: -44.5251,
+      desc: 'Cozinha alemã com sotaque de montanha: truta, joelho de porco, salsichas e chope gelado. Peçam uma sobremesa só e dividam (ou não).',
+      vibe: 'Almoço na Pequena Finlândia', tracks: [['Banana Pancakes', 'Jack Johnson', 191], ['Aquarela', 'Toquinho', 250], ['Better Together', 'Jack Johnson', 207]],
+      vale: 'Vale escolher a sobremesa. E eu não peço nem um pedaço.',
+      perguntas: ['Se você só pudesse comer um prato pelo resto da vida, qual seria?', 'Qual foi a primeira coisa que você reparou em mim?', 'Que comida te lembra a sua avó?'] },
+    { id: 'serra', time: '13:30', title: 'Subida da Serra', place: 'RJ-163 · Penedo → Visconde de Mauá', mood: 'tarde', radio: true, x: .42, y: .55, lat: -22.3880, lng: -44.5560,
+      desc: 'Uns 30 km de curvas subindo a Mantiqueira, com mata atlântica, araucárias e neblina se aparecer. Janela aberta e rádio ligado.',
+      vibe: 'Curvas da Serra', tracks: [['Anunciação', 'Alceu Valença', 238], ['Home', 'Edward Sharpe & The Magnetic Zeros', 303], ['Trem-Bala', 'Ana Vilela', 232]],
+      vale: 'Vale um beijo no primeiro mirante da subida.',
+      perguntas: ['Se essa estrada não terminasse nunca, pra onde você queria que ela levasse?', 'Qual música resume a sua vida neste momento?', 'Qual medo bobo você ainda tem?'] },
+    { id: 'pousada', time: '14:30', title: 'Check-in na Pousada Vista Bonita', place: 'Visconde de Mauá, RJ', mood: 'tarde', x: .66, y: .36, lat: -22.3330, lng: -44.5385,
+      desc: 'Malas no quarto, vista pro vale, um tempo pra respirar. Testem a cama, a varanda e o silêncio antes da aventura.',
+      vibe: 'Relax para a Pousada', tracks: [['Holocene', 'Bon Iver', 337], ['Pra Você Guardei o Amor', 'Nando Reis', 262], ['Bloom', 'The Paper Kites', 213]],
+      vale: 'Vale 20 minutos de cochilo abraçados antes do passeio.',
+      perguntas: ['Como seria a nossa casa ideal na montanha?', 'O que você faria com um dia inteiro sem celular?', 'Qual cômodo da casa da sua infância você mais lembra?'] },
+    { id: 'quadri', time: '16:00', title: 'Passeio de Quadriciclo', place: 'Trilhas da Mantiqueira', mood: 'entardecer', is3d: true, x: .82, y: .18, lat: -22.3265, lng: -44.5230,
+      desc: 'Estrada de terra, lama, subida e a luz dourada do fim de tarde batendo nas montanhas. Segura firme e grita na descida.',
+      vibe: 'Adrenalina na Terra', tracks: [['Dog Days Are Over', 'Florence + The Machine', 252], ['Mr. Blue Sky', 'Electric Light Orchestra', 303], ['Shut Up and Dance', 'WALK THE MOON', 199]],
+      vale: 'Vale um abraço sujo de lama, sem reclamação.',
+      perguntas: ['Qual foi a coisa mais corajosa que você já fez?', 'Que aventura a gente ainda precisa viver junto?', 'Se você pudesse ter qualquer habilidade instantânea, qual seria?'] },
+    { id: 'fondue', time: '20:30', title: 'Fondue no Borbulha', place: 'Maringá · Visconde de Mauá', mood: 'noite', letter: true, x: .56, y: .26, lat: -22.3310, lng: -44.5440,
+      desc: 'Frio lá fora, queijo derretendo, chocolate depois e vinho na taça. Hoje tem uma carta lacrada esperando por ela.',
+      vibe: 'Jazz à Luz da Lareira', tracks: [['La Vie en Rose', 'Louis Armstrong', 205], ['Corcovado', 'Stan Getz & João Gilberto', 254], ['At Last', 'Etta James', 180], ['Fly Me to the Moon', 'Frank Sinatra', 148]],
+      vale: 'Vale uma dança lenta. Onde ela quiser, quando ela quiser.',
+      perguntas: ['Em que momento você soube que gostava de mim?', 'Daqui a 10 anos, onde você quer que a gente esteja num sábado à noite?', 'Qual pequena coisa minha te faz sorrir sem eu saber?'] }
+  ], legs: [
+    null,
+    [[.16, .78], [.21, .83], [.27, .84]],
+    [[.27, .84], [.33, .75], [.30, .67], [.38, .63], [.42, .55]],
+    [[.42, .55], [.50, .52], [.48, .45], [.57, .42], [.66, .36]],
+    [[.66, .36], [.72, .31], [.77, .25], [.82, .18]],
+    [[.82, .18], [.75, .22], [.66, .25], [.56, .26]]
+  ] },
+  dom: { label: 'Domingo', off: 1, unlock: ['22:00', 0], stops: [
+    { id: 'escorrega', time: '09:30', title: 'Cachoeira do Escorrega', place: 'Maromba · Visconde de Mauá', mood: 'manha', x: .9, y: .44, lat: -22.3205, lng: -44.6090,
+      desc: 'Tobogã natural de pedra lisa caindo num poço verde. A água é gelada de doer. Desce primeiro quem perder no par ou ímpar.',
+      vibe: 'Água e Passarinhos', tracks: [['Here Comes the Sun', 'The Beatles', 185], ['Céu Azul', 'Charlie Brown Jr.', 204], ['Sunday Morning', 'Maroon 5', 245]],
+      vale: 'Vale um abraço quentinho na toalha depois do primeiro mergulho.',
+      perguntas: ['Se você fosse um elemento da natureza, qual seria?', 'Qual foi o banho mais gelado da sua vida?', 'Que lugar do mundo você ainda quer conhecer comigo?'] },
+    { id: 'veu', time: '11:30', title: 'Cachoeira Véu de Noiva', place: 'Maromba · Visconde de Mauá', mood: 'manha', is3d: true, x: .95, y: .32, lat: -22.3150, lng: -44.6160,
+      desc: 'Uma queda alta que se abre em leque branco. Lugar perfeito pra foto dos dois. O nome é sugestivo, mas sem pressão.',
+      vibe: 'Manhã de Cachoeira', tracks: [['Garden Song', 'Phoebe Bridgers', 219], ['Banho de Folhas', 'Luedji Luna', 236], ['Riverside', 'Agnes Obel', 229]],
+      vale: 'Vale um beijo com o barulho da cachoeira de fundo.',
+      perguntas: ['Como você imagina a gente velhinhos?', 'Que promessa boba você quer que eu te faça agora?', 'Qual é o seu som favorito no mundo?'] },
+    { id: 'ines', time: '13:30', title: 'Almoço no Restaurante da Inês', place: 'Maromba', mood: 'tarde', x: .8, y: .37, lat: -22.3230, lng: -44.6000,
+      desc: 'Comida de fogão a lenha, panela de ferro e tempero de roça. Truta, feijão tropeiro, couve e aquele doce de leite pra fechar.',
+      vibe: 'Viola e Fogão a Lenha', tracks: [['Romaria', 'Renato Teixeira', 273], ['Chalana', 'Almir Sater', 192], ['Cuitelinho', 'Pena Branca & Xavantinho', 180]],
+      vale: 'Vale a última garfada do meu prato, oferecida a ela.',
+      perguntas: ['Qual comida de vó você tem saudade?', 'Se a gente tivesse um sítio, qual bicho teria?', 'Qual tradição de família você quer manter na nossa?'] },
+    { id: 'lareira', time: '15:30', title: 'Tarde na Pousada com Lareira', place: 'Pousada Vista Bonita', mood: 'entardecer', x: .66, y: .36, lat: -22.3330, lng: -44.5385,
+      desc: 'Nada pra fazer, e esse é o plano. Lenha estalando, cobertor, um livro ou um cochilo, e chuva se ela quiser vir.',
+      vibe: 'Lareira e Cobertor', tracks: [['Pink Moon', 'Nick Drake', 124], ['Ainda Bem', 'Marisa Monte', 235], ['Re: Stacks', 'Bon Iver', 401]],
+      vale: 'Vale uma massagem nos pés de 15 minutos, cronometrados.',
+      perguntas: ['Qual foi o melhor dia da sua vida até hoje?', 'O que você nunca contou pra ninguém, mas pode contar pra mim?', 'Que mania minha você quer que eu nunca perca?'] },
+    { id: 'pizza', time: '19:30', title: 'Pizza na Pedra na Pizzaria do Vale', place: 'Maringá', mood: 'noite', x: .58, y: .3, lat: -22.3335, lng: -44.5460,
+      desc: 'Forno a lenha, pizza chegando borbulhando na pedra e vinho da serra. Noite fria, mesa pequena, joelhos encostados.',
+      vibe: 'Bossa na Brasa', tracks: [['Wave', 'Tom Jobim', 178], ['Samba de Verão', 'Marcos Valle', 175], ['The Girl from Ipanema', 'Stan Getz & Astrud Gilberto', 324]],
+      vale: 'Vale escolher o sabor das duas metades.',
+      perguntas: ['Qual foi o nosso melhor encontro até agora?', 'Se a gente tivesse que fugir amanhã, pra onde ia?', 'O que mais te fez rir neste fim de semana?'] }
+  ], legs: [
+    [[.66, .36], [.74, .40], [.83, .43], [.9, .44]],
+    [[.9, .44], [.94, .39], [.95, .32]],
+    [[.95, .32], [.88, .35], [.8, .37]],
+    [[.8, .37], [.73, .38], [.66, .36]],
+    [[.66, .36], [.62, .33], [.58, .3]]
+  ] },
+  seg: { label: 'Segunda', off: 2, unlock: ['22:00', 1], stops: [
+    { id: 'cafe', time: '09:00', title: 'Café da Manhã Prolongado', place: 'Pousada Vista Bonita', mood: 'manha', x: .66, y: .36, lat: -22.3330, lng: -44.5385,
+      desc: 'Sem despertador. Pão de queijo, bolo de fubá, queijo da serra e café coado sem pressa. Ninguém olha o relógio até o meio-dia.',
+      vibe: 'Manhã sem Pressa', tracks: [['Sunday Morning', 'The Velvet Underground', 174], ['Pétala', 'Djavan', 194], ['Coffee', 'Sylvan Esso', 290]],
+      vale: 'Vale café na cama, servido por mim.',
+      perguntas: ['Qual parte deste fim de semana você mais quer guardar?', 'O que você quer que a gente repita todo ano?', 'Se hoje fosse o primeiro dia de uma vida nova, o que mudaria?'] },
+    { id: 'maringa', time: '12:30', title: 'Compras na Vila de Maringá', place: 'Maringá · divisa RJ/MG', mood: 'manha', x: .55, y: .27, lat: -22.3330, lng: -44.5470,
+      desc: 'Lojinhas de artesanato, cerveja artesanal, chocolates e geleias. A ponte sobre o Rio Preto cruza do RJ pra MG: dá pra dar um beijo em cada estado.',
+      vibe: 'Passeio na Vila', tracks: [['Lovely Day', 'Bill Withers', 255], ['Dois Rios', 'Skank', 264], ['Vambora', 'Adriana Calcanhotto', 205]],
+      vale: 'Vale um presentinho escolhido por ela, pago por mim.',
+      perguntas: ['Que lembrancinha resume a gente?', 'Qual seria o nome da nossa loja nesta vila?', 'Em qual estado a gente se beija primeiro: RJ ou MG?'] },
+    { id: 'gosto', time: '13:30', title: 'Almoço de Despedida no Gosto com Gosto', place: 'Visconde de Mauá', mood: 'tarde', x: .6, y: .45, lat: -22.3345, lng: -44.5395,
+      desc: 'Comida mineira de panela, fogão a lenha e aquele último brinde antes de descer a serra.',
+      vibe: 'Brinde de Despedida', tracks: [['Amor de Índio', 'Beto Guedes', 256], ['Sol de Primavera', 'Beto Guedes', 266], ['Paisagem da Janela', 'Lô Borges', 194]],
+      vale: 'Vale um brinde com promessa: a próxima viagem ela escolhe.',
+      perguntas: ['Qual foi o momento mais engraçado da viagem?', 'Qual foi o momento mais bonito?', 'Pra onde vai a nossa próxima viagem?'] },
+    { id: 'retorno', time: '15:00', title: 'Retorno', place: 'Serra abaixo → casa', mood: 'entardecer', radio: true, retro: true, x: .16, y: .78, lat: -22.4386, lng: -44.5262,
+      desc: 'Descendo a Mantiqueira com o banco de trás cheio de sacolinhas e o celular cheio de fotos. Antes de pegar a estrada, abram a retrospectiva.',
+      vibe: 'Estrada de Volta', tracks: [['Trem das Cores', 'Caetano Veloso', 214], ['Fix You', 'Coldplay', 295], ['Tocando em Frente', 'Almir Sater', 245]],
+      vale: 'Vale um cochilo no meu ombro (no do carona) até a Dutra.',
+      perguntas: ['Nota de 0 a 10 pra viagem, e o que faltou pro 10?', 'O que você vai contar primeiro pras suas amigas?', 'Quando a gente volta?'] }
+  ], legs: [
+    null,
+    [[.66, .36], [.61, .31], [.55, .27]],
+    [[.55, .27], [.58, .35], [.6, .45]],
+    [[.6, .45], [.5, .52], [.42, .55], [.38, .63], [.30, .67], [.33, .75], [.27, .84], [.16, .78]]
+  ] }
+};
+const DAY_KEYS = ['sab', 'dom', 'seg'];
+DAYS.sab.preview = { ...DAYS.dom.stops[0], teaser: 'Amanhã cedo tem tobogã natural de pedra. Dá pra ouvir daqui.' };
+DAYS.dom.preview = { ...DAYS.seg.stops[1], teaser: 'Amanhã tem vila, lojinha e um beijo em cada estado.' };
+const ALL_STOPS = DAY_KEYS.flatMap(k => DAYS[k].stops.map(s => ({ s, k })));
+const dayOf = s => ALL_STOPS.find(x => x.s.id === s.id).k;
+
+const LABELS = [
+  { t: 'Penedo', x: .06, y: .88, size: 16 },
+  { t: 'Visconde de Mauá', x: .58, y: .5, size: 13 },
+  { t: 'Maringá', x: .45, y: .2, size: 13 },
+  { t: 'Maromba', x: .82, y: .5, size: 12 },
+  { t: 'Serra da Mantiqueira', x: .5, y: .78, size: 12, rot: -32 },
+  { t: 'Rio Preto', x: .3, y: .27, small: true, rot: -8 },
+  { t: 'Rio das Pedras', x: .03, y: .7, small: true, rot: 12 }
+];
+
+/* ===================================================================== utilidades */
+const $ = (s, el = document) => el.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('serra:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('serra:' + k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function dms(v, pos, neg) { const a = Math.abs(v), d = Math.floor(a), m = Math.round((a - d) * 60); return `${d}°${String(m).padStart(2, '0')}′${v < 0 ? neg : pos}`; }
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3000); }
+function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+function tripDate(hhmm, off = 0) { const [h, m] = hhmm.split(':').map(Number); const d = new Date(CONFIG.TRIP_SATURDAY + 'T00:00:00'); d.setDate(d.getDate() + off); d.setHours(h, m, 0, 0); return d; }
+const dayName = (key, opts) => tripDate('12:00', DAYS[key].off).toLocaleDateString('pt-BR', opts);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function holdToOpen(el, ms, cb) { // segurar para abrir (lacres)
+  let raf = 0, t0 = 0;
+  const start = e => { e.preventDefault(); t0 = performance.now(); el.classList.add('holding'); buzz(15);
+    const step = now => { const p = Math.min(1, (now - t0) / ms); el.style.setProperty('--hold', p); if (p >= 1) { el.classList.remove('holding'); buzz([30, 40, 60]); cb(); return; } raf = requestAnimationFrame(step); };
+    raf = requestAnimationFrame(step); };
+  const end = () => { cancelAnimationFrame(raf); el.classList.remove('holding'); el.style.setProperty('--hold', 0); };
+  el.addEventListener('pointerdown', start);
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, end));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) start(e); });
+  el.addEventListener('keyup', end);
+}
+
+/* =====================================================================
+   SOM — paisagens sonoras sintetizadas com Web Audio (nada para baixar)
+   ===================================================================== */
+const Sound = {
+  ctx: null, master: null, scene: null, sceneName: null, enabled: false, wantOn: false,
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain(); this.master.gain.value = .9; this.master.connect(this.ctx.destination);
+    const sr = this.ctx.sampleRate, len = sr * 3;
+    this.white = this.ctx.createBuffer(1, len, sr); const w = this.white.getChannelData(0);
+    for (let i = 0; i < len; i++) w[i] = Math.random() * 2 - 1;
+    this.brown = this.ctx.createBuffer(1, len, sr); const b = this.brown.getChannelData(0); let last = 0;
+    for (let i = 0; i < len; i++) { last = (last + .02 * (Math.random() * 2 - 1)) / 1.02; b[i] = last * 3.5; }
+  },
+  play(name) {
+    this.init(); this.ctx.resume();
+    if (this.sceneName === name && this.scene) return;
+    this.stopScene();
+    this.sceneName = name;
+    const url = CONFIG.SOUND_URLS[name];
+    if (url) {
+      const a = new Audio(url); a.loop = true; a.volume = 0; a.play().catch(() => {});
+      let v = 0; const fi = setInterval(() => { v = Math.min(1, v + .05); a.volume = v; if (v >= 1) clearInterval(fi); }, 80);
+      this.scene = { stop() { clearInterval(fi); const fo = setInterval(() => { a.volume = Math.max(0, a.volume - .06); if (a.volume <= 0) { clearInterval(fo); a.pause(); } }, 80); } };
+    } else {
+      this.scene = makeScene(this.ctx, this.master, SCENES[name] || SCENES.penedo, this);
+    }
+    this.enabled = true; syncSoundUI();
+  },
+  stopScene() { if (this.scene) { this.scene.stop(); this.scene = null; this.sceneName = null; } },
+  off() { this.stopScene(); this.enabled = false; syncSoundUI(); }
+};
+function makeScene(ctx, master, parts, S) {
+  const g = ctx.createGain(); g.connect(master);
+  g.gain.setValueAtTime(0, ctx.currentTime); g.gain.linearRampToValueAtTime(1, ctx.currentTime + 1.8);
+  const ps = parts.map(p => p(ctx, g, S));
+  return { stop() {
+    const t = ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 1.4);
+    ps.forEach(p => p.clearNow());
+    setTimeout(() => { ps.forEach(p => p.end()); g.disconnect(); }, 1600);
+  } };
+}
+function loopSrc(ctx, buf) { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.start(0, Math.random() * 2.5); return s; }
+function lfo(ctx, freq, depth, target) { const o = ctx.createOscillator(); o.frequency.value = freq; const d = ctx.createGain(); d.gain.value = depth; o.connect(d); d.connect(target); o.start(); return o; }
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function blip(ctx, out, { f, f2, dur, vol, type = 'sine', t = ctx.currentTime, pan = 0, attack }) {
+  const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur * .6);
+  const e = ctx.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(vol, t + (attack || Math.min(.015, dur * .2))); e.gain.exponentialRampToValueAtTime(.0005, t + dur);
+  let node = e;
+  if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; e.connect(p); node = p; }
+  o.connect(e); node.connect(out); o.start(t); o.stop(t + dur + .05);
+}
+function every(min, max, fn) { const h = { id: 0 }; const tick = () => { fn(); h.id = setTimeout(tick, min + Math.random() * (max - min)); }; h.id = setTimeout(tick, Math.random() * max); return { clear() { clearTimeout(h.id); } }; }
+function loopSched(ctx, len, fn) { let next = ctx.currentTime + .15, n = 0; const id = setInterval(() => { while (next < ctx.currentTime + .8) { fn(next, n++); next += len; } }, 150); return { clear() { clearInterval(id); } }; }
+function wrap(nodes, timers) { const clearNow = () => timers.forEach(t => t.clear()); return { clearNow, end() { clearNow(); nodes.forEach(n => { try { n.stop ? n.stop() : n.disconnect(); } catch (e) {} }); } }; }
+function gen(g, timer) { return { clearNow() { timer.clear(); }, end() { timer.clear(); g.disconnect(); } }; }
+
+const P = {
+  wind: (vol = .1, cut = 600) => (ctx, out, S) => {
+    const s = loopSrc(ctx, S.white), f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut; f.Q.value = .8;
+    const g = ctx.createGain(); g.gain.value = vol; s.connect(f); f.connect(g); g.connect(out);
+    return wrap([s, lfo(ctx, .07, cut * .5, f.frequency), lfo(ctx, .13, vol * .5, g.gain)], []);
+  },
+  water: (vol = .3) => (ctx, out, S) => {
+    const a = loopSrc(ctx, S.white), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = .5;
+    const ga = ctx.createGain(); ga.gain.value = vol * .55; a.connect(bp); bp.connect(ga); ga.connect(out);
+    const b = loopSrc(ctx, S.brown), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+    const gb = ctx.createGain(); gb.gain.value = vol * 1.1; b.connect(lp); lp.connect(gb); gb.connect(out);
+    const c = loopSrc(ctx, S.white), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
+    const gc = ctx.createGain(); gc.gain.value = vol * .12; c.connect(hp); hp.connect(gc); gc.connect(out);
+    const bub = every(70, 320, () => blip(ctx, out, { f: 300 + Math.random() * 500, f2: 900 + Math.random() * 900, dur: .05 + Math.random() * .05, vol: vol * .12, pan: Math.random() * 1.6 - .8 }));
+    return wrap([a, b, c, lfo(ctx, 5.3, vol * .06, gc.gain), lfo(ctx, .21, 300, bp.frequency)], [bub]);
+  },
+  birds: (density = 1) => (ctx, out) => {
+    const t = every(500 / density, 2600 / density, () => {
+      const base = 2200 + Math.random() * 2200, n = 1 + Math.floor(Math.random() * 5), pan = Math.random() * 1.6 - .8, now = ctx.currentTime, kind = Math.random();
+      for (let i = 0; i < n; i++) {
+        const st = now + i * (.09 + Math.random() * .05);
+        if (kind < .5) blip(ctx, out, { f: base, f2: base * 1.45, dur: .11, vol: .05, t: st, pan });
+        else blip(ctx, out, { f: base * 1.3, f2: base * .8, dur: .14, vol: .04, t: st, pan });
+      }
+    });
+    return wrap([], [t]);
+  },
+  fire: (vol = .5) => (ctx, out, S) => {
+    const r = loopSrc(ctx, S.brown), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220;
+    const g = ctx.createGain(); g.gain.value = vol * .9; r.connect(lp); lp.connect(g); g.connect(out);
+    const crack = every(25, 260, () => {
+      const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = S.white;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500 + Math.random() * 3500; bp.Q.value = 1.5;
+      const e = ctx.createGain(); const big = Math.random() < .08; const v = vol * (big ? .9 : .25 + Math.random() * .3);
+      e.gain.setValueAtTime(v, t); e.gain.exponentialRampToValueAtTime(.0005, t + (big ? .09 : .015 + Math.random() * .03));
+      s.connect(bp); bp.connect(e); e.connect(out); s.start(t, Math.random() * 2.5, .12);
+    });
+    return wrap([r, lfo(ctx, .35, vol * .35, g.gain)], [crack]);
+  },
+  engine: (vol = .12) => (ctx, out) => {
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(); o1.type = 'sawtooth'; o2.type = 'square';
+    o1.frequency.value = 46; o2.frequency.value = 92; o2.detune.value = 9;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 280; lp.Q.value = 3;
+    const g = ctx.createGain(); g.gain.value = vol; const g2 = ctx.createGain(); g2.gain.value = .4;
+    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(out); o1.start(); o2.start();
+    const rev = every(2500, 6000, () => {
+      const t = ctx.currentTime, k = 1.3 + Math.random() * .6;
+      [[o1, 46], [o2, 92]].forEach(([o, f]) => { o.frequency.setTargetAtTime(f * k, t, .18); o.frequency.setTargetAtTime(f, t + .8, .5); });
+      lp.frequency.setTargetAtTime(520, t, .2); lp.frequency.setTargetAtTime(280, t + .8, .5);
+    });
+    return wrap([o1, o2, lfo(ctx, 7, 3, o1.frequency)], [rev]);
+  },
+  murmur: (vol = .3) => (ctx, out, S) => {
+    const a = loopSrc(ctx, S.brown), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 380; bp.Q.value = .9;
+    const g = ctx.createGain(); g.gain.value = vol; a.connect(bp); bp.connect(g); g.connect(out);
+    const b = loopSrc(ctx, S.white), bp2 = ctx.createBiquadFilter(); bp2.type = 'bandpass'; bp2.frequency.value = 1000; bp2.Q.value = 3;
+    const g2 = ctx.createGain(); g2.gain.value = vol * .08; b.connect(bp2); bp2.connect(g2); g2.connect(out);
+    const clink = every(1200, 4200, () => { const f = 2600 + Math.random() * 1400; blip(ctx, out, { f, dur: .5, vol: .025, pan: Math.random() - .5 }); blip(ctx, out, { f: f * 2.7, dur: .25, vol: .01 }); });
+    return wrap([a, b, lfo(ctx, .6, vol * .4, g.gain), lfo(ctx, 1.7, 200, bp2.frequency)], [clink]);
+  },
+  road: (vol = .3) => (ctx, out, S) => {
+    const a = loopSrc(ctx, S.brown), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 150;
+    const g = ctx.createGain(); g.gain.value = vol; a.connect(lp); lp.connect(g); g.connect(out);
+    return wrap([a, lfo(ctx, .09, 60, lp.frequency)], []);
+  },
+  pad: (vol = .2) => (ctx, out) => {
+    const g = ctx.createGain(); g.gain.value = vol; const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1300; lp.connect(g); g.connect(out);
+    const chords = [[48, 55, 64, 71], [45, 52, 60, 67], [41, 48, 57, 64], [43, 50, 59, 62]], len = 4.5;
+    return gen(g, loopSched(ctx, len, (st, n) => chords[n % 4].forEach(m => [0, 7].forEach(det => {
+      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = mtof(m); o.detune.value = det;
+      const e = ctx.createGain(); e.gain.setValueAtTime(0, st); e.gain.linearRampToValueAtTime(.05, st + 1.6); e.gain.linearRampToValueAtTime(0, st + len + 1.5);
+      o.connect(e); e.connect(lp); o.start(st); o.stop(st + len + 1.6);
+    }))));
+  },
+  folk: (vol = .3) => (ctx, out) => {
+    const g = ctx.createGain(); g.gain.value = vol; g.connect(out);
+    const e8 = 60 / 104 / 2, chords = [[43, 55, 59, 62, 67], [38, 54, 57, 62, 66], [40, 52, 55, 59, 64], [36, 52, 55, 60, 64]], pat = [0, 2, 3, 4, 1, 3, 4, 3];
+    const pluck = (m, st, v) => { blip(ctx, g, { f: mtof(m), dur: 1.1, vol: v, type: 'triangle', t: st, attack: .004 }); blip(ctx, g, { f: mtof(m) * 2, dur: .4, vol: v * .25, t: st, attack: .004 }); };
+    return gen(g, loopSched(ctx, e8 * 8, (st, n) => { const c = chords[n % 4]; pat.forEach((ix, i) => pluck(c[ix], st + i * e8 + (i % 2 ? e8 * .08 : 0), ix === 0 ? .16 : .09)); }));
+  },
+  musicbox: (vol = .3) => (ctx, out) => {
+    const g = ctx.createGain(); g.gain.value = vol; g.connect(out);
+    const mel = [[72, 1], [76, 1], [79, 1], [84, 2], [83, 1], [79, 1], [76, 2], [77, 1], [81, 1], [84, 1], [79, 3], [76, 1], [74, 1], [72, 1], [71, 1], [72, 4]];
+    const beat = 60 / 92, total = mel.reduce((s, [, b]) => s + b, 0) * beat;
+    return gen(g, loopSched(ctx, total, st => { let at = st; mel.forEach(([m, b]) => {
+      const f = mtof(m); blip(ctx, g, { f, dur: 1.6, vol: .12, t: at, attack: .003 }); blip(ctx, g, { f: f * 2.76, dur: .5, vol: .03, t: at, attack: .003 }); blip(ctx, g, { f: f / 2, dur: 1.2, vol: .04, t: at, attack: .003 });
+      at += b * beat; }); }));
+  },
+  jazz: (vol = .55) => (ctx, out, S) => {
+    const g = ctx.createGain(); g.gain.value = vol; g.connect(out);
+    const dly = ctx.createDelay(); dly.delayTime.value = .27; const fb = ctx.createGain(); fb.gain.value = .28; const wet = ctx.createGain(); wet.gain.value = .22;
+    g.connect(dly); dly.connect(fb); fb.connect(dly); dly.connect(wet); wet.connect(out);
+    const beat = 60 / 72, sw = beat * .66;
+    const prog = [{ v: [53, 57, 60, 64], r: 38 }, { v: [53, 59, 64, 69], r: 43 }, { v: [52, 55, 59, 62], r: 36 }, { v: [55, 61, 64, 70], r: 45 }];
+    const note = (f, t, dur, v, type = 'sine') => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; const e = ctx.createGain();
+      e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(v, t + .012); e.gain.exponentialRampToValueAtTime(.0006, t + dur); o.connect(e); e.connect(g); o.start(t); o.stop(t + dur + .05); };
+    const rhodes = (m, t, dur, v) => { const f = mtof(m); note(f, t, dur, v); note(f * 2, t, dur * .45, v * .18); note(f * 3.01, t, .22, v * .06); };
+    const brush = (t, v) => { const s = ctx.createBufferSource(); s.buffer = S.white; const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 5500;
+      const e = ctx.createGain(); e.gain.setValueAtTime(v, t); e.gain.exponentialRampToValueAtTime(.0005, t + .13); s.connect(hp); hp.connect(e); e.connect(g); s.start(t, Math.random() * 2.5, .2); };
+    const timer = loopSched(ctx, beat * 4, (t, bar) => {
+      const c = prog[bar % 4], nx = prog[(bar + 1) % 4];
+      c.v.forEach((m, i) => rhodes(m, t + i * .012, beat * 1.9, .04));
+      if (Math.random() < .7) c.v.forEach(m => rhodes(m, t + beat + sw, beat * 1.1, .026));
+      [c.r, c.r + (Math.random() < .5 ? 3 : 4), c.r + 7, nx.r + (Math.random() < .5 ? -1 : 1)].forEach((m, i) => note(mtof(m), t + i * beat, beat * .9, .17, 'triangle'));
+      for (let i = 0; i < 4; i++) { brush(t + i * beat, .045); brush(t + i * beat + sw, .022); }
+      for (let i = 0; i < 4; i++) if (Math.random() < .33) rhodes(c.v[Math.floor(Math.random() * 4)] + 12, t + i * beat + (Math.random() < .5 ? 0 : sw), beat * 1.4, .032);
+    });
+    return { clearNow() { timer.clear(); }, end() { timer.clear(); g.disconnect(); wet.disconnect(); } };
+  }
+};
+const SCENES = {
+  penedo: [P.birds(1), P.wind(.05, 500), P.water(.06)], fritz: [P.murmur(.32), P.birds(.35)],
+  serra: [P.road(.35), P.wind(.09, 700), P.birds(.3)], pousada: [P.birds(.9), P.wind(.04, 450), P.water(.07)],
+  quadri: [P.engine(.11), P.wind(.14, 900), P.birds(.2)], fondue: [P.fire(.5), P.jazz(.55)],
+  escorrega: [P.water(.36), P.birds(.8)], veu: [P.water(.55), P.wind(.05, 600), P.birds(.5)],
+  ines: [P.murmur(.22), P.fire(.22), P.birds(.5)], lareira: [P.fire(.5), P.pad(.22)],
+  pizza: [P.fire(.3), P.murmur(.22), P.jazz(.35)], cafe: [P.birds(.9), P.murmur(.1), P.pad(.12)],
+  maringa: [P.murmur(.2), P.birds(.6), P.water(.06)], gosto: [P.murmur(.3), P.birds(.4), P.fire(.15)],
+  retorno: [P.road(.35), P.wind(.08, 700), P.pad(.15)]
+};
+function syncSoundUI() {
+  const on = Sound.enabled;
+  $('#btn-sound').setAttribute('aria-pressed', on); $('#btn-sound').setAttribute('aria-label', on ? 'Desligar o som' : 'Ligar o som');
+  $('#snd-wave').style.opacity = on ? 1 : .2;
+  $('#player').classList.toggle('playing', on);
+  $('#p-play').setAttribute('aria-label', on ? 'Pausar' : 'Tocar');
+  $('#p-play-ico').innerHTML = on ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+}
+
+/* =====================================================================
+   MAPA — relevo em camadas (cada faixa de altitude é um plano em Z)
+   ===================================================================== */
+const N_LAYERS = 7, DZ = 10, TH = [0, .15, .29, .42, .55, .67, .79];
+const PALETTES = {
+  manha:      { land: ['#d9c98a', '#bfb36a', '#a1a254', '#83904a', '#6a7a3c', '#7a6340', '#5c4630'], tree: '#3f5222', shade: 'rgba(60,40,10,.35)', river: '#6f9fa6' },
+  tarde:      { land: ['#d4be8c', '#b9a76a', '#99984f', '#7b8545', '#62703a', '#715a3a', '#53402b'], tree: '#3b4b20', shade: 'rgba(60,35,10,.38)', river: '#6a909a' },
+  entardecer: { land: ['#d59c74', '#b98962', '#93805a', '#73714b', '#5c5f40', '#6c4a36', '#4b3326'], tree: '#33391d', shade: 'rgba(70,20,10,.42)', river: '#7a7f99' },
+  noite:      { land: ['#2a2826', '#2b2e24', '#283022', '#232b1e', '#1e251a', '#2a2019', '#211913'], tree: '#141a10', shade: 'rgba(0,0,0,.6)', river: '#2f4258' }
+};
+function hash(x, y) { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+function vnoise(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+function fbm(x, y) { let s = 0, amp = .5, f = 1; for (let i = 0; i < 5; i++) { s += amp * vnoise(x * f, y * f); f *= 2.03; amp *= .5; } return s; }
+const gauss = (x, y, cx, cy, r) => Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (r * r));
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function elev(x, y) {
+  const d = x * .55 + (1 - y) * .7;
+  let e = smooth(.22, 1.05, d) * .55 + gauss(x, y, .84, .14, .11) * .3 + gauss(x, y, .46, .1, .1) * .2 + gauss(x, y, .98, .3, .1) * .2
+    + gauss(x, y, .03, .35, .16) * .28 + gauss(x, y, .62, .95, .12) * .14 + (fbm(x * 4.2 + 3, y * 4.2 + 7) - .5) * .36;
+  e -= gauss(0, Math.abs(y - (.29 + (x - .4) * .12)) * (x > .15 ? 1 : 3), 0, 0, .025) * .1;
+  e -= gauss(0, Math.abs(x - (.05 + (1 - y) * .2)) * (y > .5 ? 1 : 3), 0, 0, .03) * .08;
+  return Math.min(1, Math.max(0, e));
+}
+const toWorld = (vx, vy) => [(vx + .25) / 1.5, (vy + .25) / 1.5];
+const world = $('#world'), stage = $('#stage'), shell = $('#shell'), carousel = $('#carousel');
+let grid = null, layers = [], routeSvg, marks, pins = [], currentMood = 'manha';
+
+function buildWorld() {
+  world.innerHTML = ''; layers = [];
+  for (let k = 0; k < N_LAYERS; k++) { const c = document.createElement('canvas'); c.className = 'layer'; c.style.transform = `translateZ(${k * DZ}px)`; world.appendChild(c); layers.push(c); }
+  routeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); routeSvg.setAttribute('class', 'route'); routeSvg.style.transform = `translateZ(${3 * DZ + 2}px)`; world.appendChild(routeSvg);
+  LABELS.forEach(l => {
+    const [wx, wy] = toWorld(l.x, l.y), el = document.createElement('div');
+    el.className = 'place-label' + (l.small ? ' small' : ''); el.textContent = l.t; el.style.left = wx * 100 + '%'; el.style.top = wy * 100 + '%';
+    if (!l.small) el.style.fontSize = l.size + 'px';
+    el.style.transform = `translateZ(${Math.min(Math.floor(elev(l.x, l.y) / .14) * DZ + 4, (N_LAYERS - 1) * DZ + 4)}px) rotate(${l.rot || 0}deg)`;
+    world.appendChild(el);
+  });
+  marks = document.createElement('div'); marks.className = 'marks'; world.appendChild(marks);
+}
+function buildPins(list, preview) {
+  marks.innerHTML = '';
+  pins = [...list, ...(preview ? [preview] : [])].map((s, i) => {
+    const isPrev = s === preview, [wx, wy] = toWorld(s.x, s.y), el = document.createElement('div');
+    el.className = 'pin' + (isPrev ? ' preview' : '') + (s.is3d ? ' pulse' : '');
+    el.style.left = wx * 100 + '%'; el.style.top = wy * 100 + '%';
+    el.style.setProperty('--z', ((TH.filter(t => elev(s.x, s.y) >= t).length - 1) * DZ + 3) + 'px');
+    el.innerHTML = `<button type="button" aria-label="${esc(s.time + ' ' + s.title)}"><span class="tag">${esc(s.time)} · ${esc(s.title)}</span><span class="head">${isPrev ? '☼' : i + 1}</span><span class="stem"></span></button>`;
+    el.querySelector('button').addEventListener('click', () => isPrev ? playPreview() : selectStop(i, { arrive: true }));
+    marks.appendChild(el); return el;
+  });
+}
+function computeGrid() {
+  const W = world.clientWidth, H = world.clientHeight, gw = Math.max(60, Math.ceil(W / 3)), gh = Math.max(60, Math.ceil(H / 3)), E = new Float32Array(gw * gh);
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) E[y * gw + x] = elev(((x + .5) / gw) * 1.5 - .25, ((y + .5) / gh) * 1.5 - .25);
+  grid = { E, gw, gh, W, H };
+}
+function paintTerrain(mood) {
+  if (!grid) return;
+  const { E, gw, gh, W, H } = grid, pal = PALETTES[mood], dpr = Math.min(1.5, devicePixelRatio || 1);
+  const cw = Math.round(Math.min(W * dpr, 1400)), ch = Math.round(H * cw / W), scale = cw / W;
+  const small = document.createElement('canvas'); small.width = gw; small.height = gh; const sctx = small.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  layers.forEach((c, k) => {
+    c.width = cw; c.height = ch;
+    const ctx = c.getContext('2d'), img = sctx.createImageData(gw, gh), col = hex(pal.land[k]), th = TH[k];
+    for (let i = 0; i < E.length; i++) {
+      const a = k === 0 ? 1 : Math.min(1, Math.max(0, (E[i] - th) / .012)); if (a <= 0) continue;
+      const j = i * 4, n = (hash(i, k) - .5) * 10; img.data[j] = col[0] + n; img.data[j + 1] = col[1] + n; img.data[j + 2] = col[2] + n; img.data[j + 3] = a * 255;
+    }
+    sctx.putImageData(img, 0, 0); ctx.imageSmoothingEnabled = true;
+    if (k > 0) { ctx.shadowColor = pal.shade; ctx.shadowBlur = 10 * scale + 2; ctx.shadowOffsetY = 3; }
+    ctx.drawImage(small, 0, 0, cw, ch); ctx.shadowColor = 'transparent';
+    if (k === 0) drawRivers(ctx, cw, ch, pal.river);
+    if (k >= 2 && k <= 5) {
+      ctx.fillStyle = pal.tree;
+      for (let i = 0, count = Math.round(cw * ch / 900); i < count; i++) {
+        const gx = rnd(), gy = rnd(), e = E[Math.floor(gy * gh) * gw + Math.floor(gx * gw)];
+        if (e < th + .015 || e >= (TH[k + 1] || 1) - .01) continue;
+        const x = gx * cw, y = gy * ch, s = (1.1 + rnd() * 1.3) * Math.max(.7, scale * 1.2);
+        if (k >= 4 && rnd() < .5) { ctx.fillRect(x - .4, y - s * 1.6, .9, s * 1.6); ctx.beginPath(); ctx.ellipse(x, y - s * 1.7, s * 1.3, s * .45, 0, 0, Math.PI * 2); ctx.fill(); }
+        else { ctx.beginPath(); ctx.moveTo(x, y - s * 2); ctx.lineTo(x + s * .8, y); ctx.lineTo(x - s * .8, y); ctx.closePath(); ctx.fill(); }
+      }
+    }
+  });
+}
+function hex(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function drawRivers(ctx, cw, ch, color) {
+  ctx.strokeStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  [[[-.2, .32], [.1, .3], [.3, .28], [.5, .3], [.7, .33], [.9, .38], [1.2, .4]], [[.0, 1.2], [.05, .95], [.08, .8], [.06, .65], [.12, .5], [.1, .35]]].forEach((r, i) => {
+    ctx.lineWidth = (i === 0 ? 4 : 3) * cw / 1400 + 1.2;
+    ctx.beginPath(); r.forEach(([x, y], j) => { const [wx, wy] = toWorld(x, y); j ? ctx.lineTo(wx * cw, wy * ch) : ctx.moveTo(wx * cw, wy * ch); }); ctx.stroke();
+  });
+}
+function catmull(pts) {
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) { const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`; }
+  return d;
+}
+function buildRoute() {
+  const W = world.clientWidth, H = world.clientHeight; routeSvg.setAttribute('viewBox', `0 0 ${W} ${H}`); routeSvg.innerHTML = '';
+  LEGS.forEach((leg, i) => {
+    if (!leg) return;
+    const d = catmull(leg.map(([x, y]) => { const [wx, wy] = toWorld(x, y); return [wx * W, wy * H]; }));
+    const base = document.createElementNS(routeSvg.namespaceURI, 'path'); base.setAttribute('d', d); base.setAttribute('class', 'base');
+    const prog = document.createElementNS(routeSvg.namespaceURI, 'path'); prog.setAttribute('d', d); prog.setAttribute('class', 'prog'); prog.dataset.leg = i;
+    routeSvg.append(base, prog); const L = prog.getTotalLength(); prog.style.strokeDasharray = L; prog.style.strokeDashoffset = L; prog.dataset.len = L;
+  });
+  updateRoute();
+}
+function updateRoute() { routeSvg.querySelectorAll('.prog').forEach(p => { p.style.strokeDashoffset = (+p.dataset.leg <= activeIdx) ? 0 : p.dataset.len; }); }
+
+/* câmera: centraliza no espaço livre entre o topo e os cards */
+let cam = { x: .5, y: .5, s: 1, tilt: 0, rot: 0 }, orbitRAF = 0;
+function setCamera(c) {
+  cancelAnimationFrame(orbitRAF); world.classList.remove('free');
+  cam = { ...cam, ...c };
+  const [wx, wy] = toWorld(cam.x, cam.y), W = stage.clientWidth, H = stage.clientHeight;
+  const top = $('.topbar').offsetHeight, bottom = shell.classList.contains('touring') ? 100 : carousel.offsetHeight;
+  const cy = (top + (H - bottom)) / 2 + (cam.tilt > 40 ? 30 : 0);
+  world.style.transformOrigin = `${wx * 100}% ${wy * 100}%`;
+  world.style.setProperty('--tx', (W / 2 - (-.25 * W + wx * 1.5 * W)) + 'px');
+  world.style.setProperty('--ty', (cy - (-.25 * H + wy * 1.5 * H)) + 'px');
+  world.style.setProperty('--tilt', cam.tilt + 'deg'); world.style.setProperty('--rot', cam.rot + 'deg'); world.style.setProperty('--s', cam.s);
+  $('#compass').style.transform = `rotate(${cam.rot}deg)`;
+  stage.classList.toggle('is3d', cam.tilt > 40);
+}
+function overview() { setCamera({ x: .55, y: .5, s: .95, tilt: 0, rot: 0 }); $('#hud-title').textContent = 'Serra da Mantiqueira'; $('#hud-coords').textContent = '22°23′S · 44°32′O'; }
+function flyTo(s) {
+  if (s.is3d) { setCamera({ x: s.x, y: s.y + .02, s: 2.2, tilt: 60, rot: -28 }); if (!reduced) setTimeout(startOrbit, 1900); }
+  else setCamera({ x: s.x, y: s.y, s: 1.7, tilt: 36, rot: -6 });
+}
+function startOrbit() {
+  if (!STOPS[activeIdx] || !STOPS[activeIdx].is3d || touring) return;
+  world.classList.add('free'); const t0 = performance.now(), base = cam.rot;
+  const step = now => { const r = base + Math.sin((now - t0) / 5200) * 22; world.style.setProperty('--rot', r + 'deg'); $('#compass').style.transform = `rotate(${r}deg)`; orbitRAF = requestAnimationFrame(step); };
+  orbitRAF = requestAnimationFrame(step);
+}
+function drawStars() {
+  const c = $('#stars'), W = stage.clientWidth, H = stage.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
+  c.width = W * dpr; c.height = H * dpr; const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+  let seed = 11; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < W * H / 700; i++) { ctx.fillStyle = `rgba(255,245,225,${.3 + r() * .7})`; ctx.beginPath(); ctx.arc(r() * W, r() * H * .75, r() * 1.3 + .2, 0, Math.PI * 2); ctx.fill(); }
+  const hx = W * .7, hy = H * .3, k = Math.min(W, H) / 700, pts = []; // a nossa constelação
+  for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) pts.push([hx + 16 * Math.sin(a) ** 3 * 3 * k, hy - (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * 3 * k]);
+  ctx.strokeStyle = 'rgba(246,184,102,.35)'; ctx.lineWidth = .8; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.stroke();
+  pts.forEach(([x, y]) => { ctx.fillStyle = '#ffe8c2'; ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill(); });
+}
+
+/* humor / tema */
+const THEME_BG = { manha: '#f4e3b0', tarde: '#e9d8b4', entardecer: '#e2ad84', noite: '#120e10' };
+function setMood(m) {
+  if (m === currentMood) return;
+  currentMood = m; document.documentElement.dataset.mood = m; paintTerrain(m);
+  const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = THEME_BG[m];
+  const em = $('#embers');
+  if (m === 'noite' && !em.childElementCount && !reduced) for (let i = 0; i < 18; i++) {
+    const e = document.createElement('i'); e.style.left = Math.random() * 100 + '%'; e.style.animationDuration = 5 + Math.random() * 7 + 's';
+    e.style.animationDelay = -Math.random() * 10 + 's'; e.style.setProperty('--dx', (Math.random() * 60 - 30) + 'px');
+    const s = 2 + Math.random() * 3; e.style.width = e.style.height = s + 'px'; em.appendChild(e);
+  }
+}
+
+/* =====================================================================
+   DIAS E CARDS
+   ===================================================================== */
+let dayKey = 'sab', STOPS = DAYS.sab.stops, LEGS = DAYS.sab.legs, activeIdx = -1, touring = false;
+const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const HEART = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.4.7-1.2 2.2-2.4 4.3-2.4 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
+const PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>';
+function unlockAt(key) { const u = DAYS[key].unlock; return u ? tripDate(u[0], u[1]) : null; }
+function isLocked(key) { const u = unlockAt(key); return CONFIG.LOCK_DAYS && u && new Date() < u && !store.get('peek:' + key, false); }
+function renderTabs() { $('#days').innerHTML = DAY_KEYS.map(k => `<button type="button" data-day="${k}" aria-pressed="${k === dayKey}">${DAYS[k].label}${isLocked(k) ? LOCK_SVG : ''}</button>`).join(''); }
+function renderDay(key, { force = false } = {}) {
+  dayKey = key; const d = DAYS[key]; STOPS = d.stops; LEGS = d.legs; activeIdx = -1;
+  renderTabs(); $('#date-sub').textContent = dayName(key, { weekday: 'long', day: 'numeric', month: 'long' });
+  if (!force && isLocked(key)) { renderLockedCard(key); buildPins([], null); routeSvg.innerHTML = ''; overview(); return; }
+  renderCards(d.preview); buildPins(STOPS, d.preview); buildRoute(); updateWhen();
+  if (carousel.scrollLeft) { programmatic = true; carousel.scrollLeft = 0; }
+  carousel.firstElementChild.classList.add('active');
+  if (!touring) { overview(); Player.load(STOPS[0]); }
+}
+function renderLockedCard(key) {
+  const u = unlockAt(key);
+  carousel.innerHTML = `<article class="card locked active">
+    <button class="seal sm" type="button" id="peek" aria-label="Segure para espiar o dia">♥</button>
+    <h3>${DAYS[key].label} ainda está lacrado</h3>
+    <p class="place" style="white-space:normal">Abre ${u.toLocaleDateString('pt-BR', { weekday: 'long' })} às ${u.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. Segure o lacre 2 s se não aguentar.</p></article>`;
+  holdToOpen($('#peek'), 2000, () => { store.set('peek:' + key, true); renderDay(key); toast(`${DAYS[key].label} liberado. Shhh.`); });
+}
+function renderCards(preview) {
+  carousel.innerHTML = STOPS.map((s, i) => `
+    <article class="card" data-i="${i}">
+      <div class="c-top"><span class="c-num">${i + 1}</span><span class="c-time">${s.time}</span><span class="when" data-when="${i}"></span></div>
+      <h3>${esc(s.title)}</h3>
+      <p class="place">${esc(s.place)}</p>
+      <div class="c-actions">
+        <button class="btn" type="button" data-arrive="${i}">${PIN_SVG}Chegamos</button>
+        ${s.letter ? `<button class="btn alt" type="button" data-letter="1">Carta</button>` : s.radio ? `<button class="btn alt" type="button" data-radio="1">Rádio</button>` : ''}
+        ${s.retro ? `<button class="btn alt" type="button" data-retro="1">Retrospectiva</button>` : `<button class="btn alt" type="button" data-more="${i}">Detalhes</button>`}
+      </div>
+      <button class="heart${store.get('found:' + s.id, false) ? ' found' : ''}" type="button" data-heart="${i}" aria-label="Surpresa escondida">${HEART}</button>
+    </article>`).join('') + (preview ? `
+    <article class="card teaser">
+      <span class="eyebrow">Spoiler de amanhã · ${preview.time}</span>
+      <h3>${esc(preview.title)}</h3>
+      <p class="place" style="white-space:normal">${esc(preview.teaser)}</p>
+      <button class="btn alt" type="button" data-preview="1"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>Ouvir uma prévia</button>
+    </article>` : '');
+}
+carousel.addEventListener('click', e => {
+  const h = e.target.closest('[data-heart]'); if (h) { buzz(20); openCapsule(STOPS[+h.dataset.heart]); return; }
+  const a = e.target.closest('[data-arrive]'); if (a) { selectStop(+a.dataset.arrive, { arrive: true, force: true }); return; }
+  const m = e.target.closest('[data-more]'); if (m) { openDetails(STOPS[+m.dataset.more]); return; }
+  if (e.target.closest('[data-letter]')) { openLetter(); return; }
+  if (e.target.closest('[data-radio]')) { showTab('radio'); return; }
+  if (e.target.closest('[data-retro]')) { startTour(); return; }
+  if (e.target.closest('[data-preview]')) { playPreview(); return; }
+  const card = e.target.closest('.card[data-i]'); if (card && +card.dataset.i !== activeIdx) selectStop(+card.dataset.i, { arrive: true });
+});
+// deslizar o carrossel = chegar na parada
+let scrollT, programmatic = false;
+carousel.addEventListener('scroll', () => {
+  clearTimeout(scrollT);
+  scrollT = setTimeout(() => {
+    if (programmatic || touring) { programmatic = false; return; }
+    const mid = carousel.scrollLeft + carousel.clientWidth / 2;
+    let best = null, bd = 1e9;
+    carousel.querySelectorAll('.card').forEach(c => { const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (d < bd) { bd = d; best = c; } });
+    if (!best) return;
+    carousel.querySelectorAll('.card').forEach(c => c.classList.toggle('active', c === best));
+    if (best.dataset.i != null && +best.dataset.i !== activeIdx) selectStop(+best.dataset.i, { arrive: true, fromScroll: true });
+  }, 140);
+}, { passive: true });
+function scrollToCard(i) {
+  const c = carousel.querySelector(`.card[data-i="${i}"]`); if (!c) return;
+  carousel.querySelectorAll('.card').forEach(x => x.classList.toggle('active', x === c));
+  const left = c.offsetLeft - (carousel.clientWidth - c.offsetWidth) / 2;
+  if (Math.abs(carousel.scrollLeft - left) > 4) { programmatic = true; carousel.scrollTo({ left, behavior: reduced ? 'auto' : 'smooth' }); }
+}
+function updateWhen() {
+  const now = new Date(), off = DAYS[dayKey].off;
+  STOPS.forEach((s, i) => {
+    const el = $(`[data-when="${i}"]`); if (!el) return;
+    const t = tripDate(s.time, off), next = STOPS[i + 1] ? tripDate(STOPS[i + 1].time, off) : new Date(t.getTime() + 3 * 3600e3);
+    let txt = '';
+    if (now >= t && now < next) txt = '· agora';
+    else if (now < t && t - now < 12 * 3600e3) { const m = Math.round((t - now) / 60000); txt = m >= 60 ? `· em ${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `· em ${m} min`; }
+    el.textContent = txt;
+  });
+  const d = Math.ceil((tripDate('00:00') - now) / 86400000);
+  $('#cover-count').textContent = `${dayName('sab', { day: 'numeric', month: 'long' })} a ${dayName('seg', { day: 'numeric', month: 'long' })} · ${d > 1 ? `faltam ${d} dias` : d === 1 ? 'é amanhã' : d >= -2 ? 'é agora' : 'foi lindo'}`;
+}
+
+/* chegada (geofence simulado) */
+function selectStop(i, { arrive = false, silent = false, force = false, fromScroll = false } = {}) {
+  const s = STOPS[i]; const same = i === activeIdx; activeIdx = i;
+  if (!fromScroll) scrollToCard(i);
+  pins.forEach((p, j) => p.classList.toggle('active', j === i));
+  setMood(s.mood); flyTo(s); updateRoute();
+  $('#hud-title').textContent = s.title;
+  $('#hud-coords').textContent = `${dms(s.lat, 'N', 'S')} · ${dms(s.lng, 'L', 'O')} · aprox.`;
+  Player.load(s);
+  if (arrive && !silent && (!same || force)) {
+    if (Sound.enabled || Sound.wantOn) Sound.play(s.id);
+    if (force) toast(`Chegamos: ${s.title}`);
+    buzz([30, 50, 30]);
+    if (s.letter && !store.get('letter-open', false)) setTimeout(() => toast('Tem uma carta lacrada neste card'), 3200);
+  }
+  if (gmap) gmapFly(s);
+}
+function playPreview() {
+  const p = DAYS[dayKey].preview; if (!p) return;
+  pins.forEach(pin => pin.classList.remove('active')); pins[pins.length - 1].classList.add('active');
+  setMood(p.mood); setCamera({ x: p.x, y: p.y, s: 1.8, tilt: 45, rot: 10 });
+  $('#hud-title').textContent = 'Amanhã · ' + p.title; $('#hud-coords').textContent = `${dms(p.lat, 'N', 'S')} · ${dms(p.lng, 'L', 'O')} · aprox.`;
+  Sound.wantOn = true; Sound.play(p.id); Player.load(p); toast('Prévia de amanhã');
+}
+
+/* player (simulado) */
+const Player = {
+  stop: null, idx: 0, pos: 0, last: 0,
+  load(s) { if (this.stop === s) return; this.stop = s; this.idx = 0; this.pos = 0; this.render(); },
+  render() {
+    const s = this.stop, [title, artist] = s.tracks[this.idx];
+    $('#p-vibe').textContent = s.vibe; $('#p-track').innerHTML = `${esc(title)} <span>· ${esc(artist)}</span>`;
+    $('#p-link').href = CONFIG.SPOTIFY_PLAYLISTS[s.id] || 'https://open.spotify.com/search/' + encodeURIComponent(title + ' ' + artist);
+  },
+  next(d = 1) { const n = this.stop.tracks.length; this.idx = (this.idx + d + n) % n; this.pos = 0; this.render(); },
+  tick(now) {
+    const dt = this.last ? (now - this.last) / 1000 : 0; this.last = now;
+    if (Sound.enabled && this.stop && !Radio.on) { this.pos += dt; const dur = this.stop.tracks[this.idx][2]; if (this.pos >= dur) this.next(); $('#p-bar').style.width = (this.pos / dur * 100) + '%'; }
+    requestAnimationFrame(t => this.tick(t));
+  }
+};
+
+/* =====================================================================
+   FOLHAS (bottom sheets)
+   ===================================================================== */
+let onModalClose = null;
+function closeModal() { $('#modal-root').innerHTML = ''; document.removeEventListener('keydown', escClose); const f = onModalClose; onModalClose = null; if (f) f(); }
+function escClose(e) { if (e.key === 'Escape') closeModal(); }
+function modal(html, cls = '', onClose = null) {
+  if ($('#modal-root').firstChild) closeModal();
+  const root = $('#modal-root');
+  root.innerHTML = `<div class="overlay"><div class="sheet ${cls}" role="dialog" aria-modal="true"><button class="grab" type="button" aria-label="Fechar"></button>${html}</div></div>`;
+  onModalClose = onClose;
+  const ov = root.firstElementChild, sheet = ov.firstElementChild, grab = $('.grab', sheet);
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  grab.addEventListener('click', closeModal);
+  let y0 = null; // arrastar para baixo para fechar
+  grab.addEventListener('pointerdown', e => { y0 = e.clientY; grab.setPointerCapture(e.pointerId); });
+  grab.addEventListener('pointermove', e => { if (y0 == null) return; const dy = Math.max(0, e.clientY - y0); sheet.style.transform = `translateY(${dy}px)`; });
+  grab.addEventListener('pointerup', e => { if (y0 == null) return; const dy = e.clientY - y0; y0 = null; if (dy > 90) closeModal(); else sheet.style.transform = ''; });
+  document.addEventListener('keydown', escClose);
+  return ov;
+}
+function openDetails(s) {
+  const ov = modal(`
+    <span class="eyebrow">${DAYS[dayOf(s)].label} · ${s.time}</span>
+    <h2>${esc(s.title)}</h2>
+    <p class="desc">${esc(s.desc)}</p>
+    <span class="vibe">${esc(s.vibe)}</span>
+    <ul class="tracks">${s.tracks.map(([t, a]) => `<li><a href="https://open.spotify.com/search/${encodeURIComponent(t + ' ' + a)}" target="_blank" rel="noopener">${esc(t)}<span>${esc(a)} ↗</span></a></li>`).join('')}</ul>
+    ${store.get('photo:' + s.id, null) ? `<img class="thumb" src="${store.get('photo:' + s.id)}" alt="Foto guardada">` : ''}
+    <div class="row"><button class="btn" type="button" id="d-cap">${HEART}Abrir a cápsula</button></div>`);
+  $('#d-cap', ov).onclick = () => openCapsule(s);
+}
+function openCapsule(s, tab = 'vale') {
+  store.set('found:' + s.id, true);
+  const h = carousel.querySelector(`[data-heart="${STOPS.indexOf(s)}"]`); if (h) h.classList.add('found');
+  const k = dayOf(s), serial = ALL_STOPS.findIndex(x => x.s.id === s.id) + 1;
+  const ov = modal(`
+    <span class="eyebrow">Cápsula do tempo · ${DAYS[k].label} ${s.time}</span>
+    <h2>${esc(s.title)}</h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" type="button" data-tab="vale">Vale</button>
+      <button role="tab" type="button" data-tab="foto">Foto</button>
+      <button role="tab" type="button" data-tab="pergunta">Pergunta</button>
+    </div>
+    <div id="cap-body"></div>`);
+  const body = $('#cap-body', ov); let qi = Math.floor(Math.random() * s.perguntas.length);
+  const show = t => {
+    ov.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+    if (t === 'vale') {
+      const used = store.get('vale:' + s.id, null);
+      body.innerHTML = `<div class="ticket"><div class="t-kind">Vale-abraço nº ${String(serial).padStart(3, '0')}</div><div class="t-title">Válido hoje</div>
+        <div class="t-text">${esc(s.vale)}</div><div class="t-foot"><span>${esc(s.place)}</span><span>${s.time} · ${tripDate(s.time, DAYS[k].off).toLocaleDateString('pt-BR')}</span></div>
+        ${used ? `<div class="stamp">Resgatado ${used}</div>` : ''}</div>
+        <div class="row">${used ? '<span class="hint">Já resgatado. Pode resgatar de novo sem registrar, ninguém está contando.</span>' : '<button class="btn" type="button" id="redeem" style="width:100%">Resgatar agora</button>'}</div>`;
+      const r = $('#redeem', body);
+      if (r) r.onclick = () => {
+        store.set('vale:' + s.id, new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })); show('vale'); const st = $('.stamp', body); if (st) st.classList.add('fresh');
+        buzz([20, 40, 80]); Sound.init(); blip(Sound.ctx, Sound.master, { f: 880, f2: 1320, dur: .35, vol: .12 }); blip(Sound.ctx, Sound.master, { f: 1320, dur: .5, vol: .08, t: Sound.ctx.currentTime + .12 });
+      };
+    } else if (t === 'foto') {
+      const src = store.get('photo:' + s.id, null);
+      body.innerHTML = `${src ? `<figure class="polaroid"><img src="${src}" alt="Foto deste momento"><figcaption>${esc(s.title)}</figcaption></figure>` : ''}
+        <label class="photo-drop"><input type="file" accept="image/*" id="photo-in"><b>${src ? 'Trocar a foto' : 'Guardar a foto deste momento'}</b><span>Tire agora ou escolha da galeria. Fica salva só neste celular.</span></label>`;
+      $('#photo-in', body).onchange = e => { const f = e.target.files[0]; if (f) savePhoto(s, f, () => show('foto')); };
+    } else {
+      body.innerHTML = `<span class="eyebrow">Faça esta pergunta para ela agora</span><p class="question" aria-live="polite">${esc(s.perguntas[qi])}</p>
+        <div class="row"><button class="btn alt" type="button" id="nextq" style="width:100%">Outra pergunta</button></div>`;
+      $('#nextq', body).onclick = () => { qi = (qi + 1) % s.perguntas.length; show('pergunta'); };
+    }
+  };
+  ov.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => show(b.dataset.tab));
+  show(tab);
+}
+function savePhoto(s, file, done) {
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => {
+    const k = Math.min(1, 900 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+    if (!store.set('photo:' + s.id, c.toDataURL('image/jpeg', .78)) && !store.set('photo:' + s.id, c.toDataURL('image/jpeg', .5))) { toast('Sem espaço para guardar a foto'); return; }
+    toast('Foto guardada na cápsula'); buzz(40); done();
+  };
+  img.onerror = () => toast('Não consegui abrir essa imagem');
+  img.src = url;
+}
+function openLetter() {
+  const unlock = tripDate('20:30', 0), early = new Date() < unlock;
+  const ov = modal(`<span class="eyebrow" style="color:#7a5230">Carta lacrada</span><h2>Para ler com o fondue na mesa</h2><div id="letter-body"></div>`, 'letter-sheet');
+  const body = $('#letter-body', ov);
+  const reveal = () => { store.set('letter-open', true); body.innerHTML = `<p class="letter-text">${esc(CONFIG.LOVE_LETTER)}</p>`; Sound.init(); blip(Sound.ctx, Sound.master, { f: 523, f2: 784, dur: .9, vol: .08 }); };
+  if (store.get('letter-open', false)) { reveal(); return; }
+  body.innerHTML = `<div class="seal-wrap"><button class="seal" type="button" id="seal" aria-label="Segure para abrir a carta">♥</button>
+    <span class="lock-note">${early ? `Abre ${unlock.toLocaleDateString('pt-BR', { weekday: 'long' })} às 20:30. Segure o lacre 2 segundos se não aguentar esperar.` : 'Chegou a hora. Toque no lacre.'}</span></div>`;
+  const seal = $('#seal', body); if (early) holdToOpen(seal, 2000, reveal); else seal.onclick = reveal;
+}
+
+/* =====================================================================
+   ABAS: Viagem, Rádio, Álbum, Nós
+   ===================================================================== */
+let tab = 'viagem';
+function showTab(t) {
+  if (t === tab) return;
+  if (touring) endTour(false);
+  if (tab === 'radio') Radio.stop();
+  tab = t;
+  document.querySelectorAll('#tabbar [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+  ['radio', 'album', 'nos'].forEach(p => $('#page-' + p).hidden = p !== t);
+  if (t === 'radio') Radio.start();
+  if (t === 'album') renderAlbum();
+  if (t === 'nos') renderNos();
+}
+function renderAlbum() {
+  const vis = DAY_KEYS.filter(k => !isLocked(k));
+  $('#album').innerHTML = vis.map(k => `<div class="album-day">${DAYS[k].label}</div><div class="album-grid">${DAYS[k].stops.map(s => {
+    const src = store.get('photo:' + s.id, null);
+    return `<figure data-cap="${s.id}" tabindex="0" role="button" aria-label="Foto de ${esc(s.title)}">${src ? `<img class="ph" src="${src}" alt="">` : `<div class="ph empty">Toque pra guardar a foto</div>`}<figcaption>${esc(s.title)}<small>${s.time}</small></figcaption></figure>`;
+  }).join('')}</div>`).join('');
+  const n = ALL_STOPS.filter(x => store.get('photo:' + x.s.id, null)).length;
+  $('#album-hint').textContent = `${n} de ${ALL_STOPS.length} fotos guardadas. Tire um print para guardar o postal.`;
+}
+$('#album').addEventListener('click', e => { const f = e.target.closest('[data-cap]'); if (f) openCapsule(ALL_STOPS.find(x => x.s.id === f.dataset.cap).s, 'foto'); });
+function stats() {
+  const all = ALL_STOPS.map(x => x.s);
+  const mins = (tripDate(DAYS.seg.stops.at(-1).time, 2) - tripDate(DAYS.sab.stops[0].time, 0)) / 60000;
+  return [
+    [`${Math.floor(mins / 60)}h${mins % 60 ? String(mins % 60).padStart(2, '0') : ''}`, 'juntos na serra'],
+    [`${all.filter(s => store.get('found:' + s.id, false)).length}/${all.length}`, 'corações encontrados'],
+    [all.filter(s => store.get('photo:' + s.id, null)).length, 'fotos na cápsula'],
+    [all.filter(s => store.get('vale:' + s.id, null)).length, 'vales resgatados']
+  ];
+}
+function renderNos() {
+  $('#nos-eyebrow').textContent = `Nós dois · ${dayName('sab', { day: 'numeric', month: 'short' })} a ${dayName('seg', { day: 'numeric', month: 'short' })}`;
+  $('#nos-stats').innerHTML = stats().map(([b, t]) => `<div><b>${b}</b><span>${t}</span></div>`).join('');
+  const lockedRetro = isLocked('seg'), btn = $('#nos-retro');
+  btn.disabled = lockedRetro; btn.style.opacity = lockedRetro ? .5 : 1;
+  btn.innerHTML = lockedRetro ? `${LOCK_SVG}Retrospectiva abre com a segunda` : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>Ver a retrospectiva';
+}
+
+/* RÁDIO DA SERRA */
+const STATIONS = [
+  { f: 88.7, name: 'Neblina FM', desc: 'Ambiente pra subir devagar', part: P.pad(.5) },
+  { f: 93.1, name: 'Rádio Araucária', desc: 'Folk de estrada, sem intervalo', part: P.folk(.9) },
+  { f: 98.3, name: 'Mantiqueira Jazz', desc: 'Jazz de madrugada, mesmo de dia', part: P.jazz(.7) },
+  { f: 104.5, name: 'Rádio Nós Dois', desc: 'Programa de dedicatórias', part: P.musicbox(.8), dedica: true }
+];
+const Radio = {
+  on: false, freq: store.get('radio-f', 91.0), spoken: false,
+  start() {
+    if (this.on) return;
+    Sound.init(); const ctx = Sound.ctx; ctx.resume();
+    this.resume = Sound.enabled; Sound.stopScene();
+    const out = ctx.createGain(); out.connect(Sound.master); out.gain.setValueAtTime(0, ctx.currentTime); out.gain.linearRampToValueAtTime(1, ctx.currentTime + .6);
+    const st = loopSrc(ctx, Sound.white), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = .4;
+    const sg = ctx.createGain(); sg.gain.value = .2; st.connect(bp); bp.connect(sg); sg.connect(out);
+    const crackle = every(40, 400, () => blip(ctx, sg, { f: 3000 + Math.random() * 3000, dur: .02, vol: .3, type: 'square' }));
+    const chans = STATIONS.map(s => { const g = ctx.createGain(); g.gain.value = 0; g.connect(out); return { s, g, part: s.part(ctx, g, Sound) }; });
+    this.g = { ctx, out, st, sg, crackle, chans }; this.on = true; this.spoken = false;
+    $('#r-power').textContent = 'Desligar'; $('#r-power').classList.add('on');
+    this.tune(this.freq);
+    Sound.enabled = true; syncSoundUI();
+    $('#p-vibe').textContent = 'Rádio da Serra';
+  },
+  stop() {
+    if (!this.on) return;
+    const { ctx, out, st, crackle, chans } = this.g, t = ctx.currentTime;
+    out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.linearRampToValueAtTime(0, t + .5);
+    crackle.clear(); chans.forEach(c => c.part.clearNow());
+    try { speechSynthesis.cancel(); } catch (e) {}
+    setTimeout(() => { chans.forEach(c => c.part.end()); try { st.stop(); } catch (e) {} out.disconnect(); }, 700);
+    this.on = false; $('#r-power').textContent = 'Ligar'; $('#r-power').classList.remove('on');
+    $('#r-name').textContent = ''; $('#r-desc').textContent = 'desligado'; $('#r-dedica').textContent = '';
+    if (Player.stop) Player.render();
+    if (this.resume && STOPS[Math.max(0, activeIdx)]) Sound.play(STOPS[Math.max(0, activeIdx)].id); else { Sound.enabled = false; syncSoundUI(); }
+  },
+  tune(v) {
+    this.freq = v; store.set('radio-f', v); $('#r-freq').textContent = v.toFixed(1); $('#r-dial').value = v;
+    if (!this.on) return;
+    const { ctx, sg, chans } = this.g, t = ctx.currentTime; let best = null, bestG = 0;
+    chans.forEach(c => { const d = Math.abs(v - c.s.f), g = Math.max(0, 1 - (d / .8) ** 2); c.g.gain.setTargetAtTime(g, t, .05); if (g > bestG) { bestG = g; best = c.s; } });
+    sg.gain.setTargetAtTime(.03 + .32 * (1 - bestG), t, .05);
+    const locked = best && bestG > .55;
+    $('#r-name').textContent = locked ? best.name : 'chiado...'; $('#r-desc').textContent = locked ? best.desc : '';
+    const ded = $('#r-dedica');
+    if (locked && best.dedica) {
+      const text = CONFIG.RADIO_DEDICATORIA.replace(/\{ELA\}/g, CONFIG.HER_NAME).replace(/\{EU\}/g, CONFIG.MY_NAME);
+      if (!ded.textContent) { ded.textContent = text; buzz([20, 30, 20]); }
+      if (!this.spoken && 'speechSynthesis' in window) { this.spoken = true; try { const u = new SpeechSynthesisUtterance(text.replace(/\n/g, ' ')); u.lang = 'pt-BR'; u.rate = .95; u.pitch = .85; speechSynthesis.speak(u); } catch (e) {} }
+    } else ded.textContent = '';
+  },
+  scan() {
+    if (!this.on) this.start();
+    const nx = STATIONS.find(s => s.f > this.freq + .05) || STATIONS[0], from = this.freq, t0 = performance.now();
+    const step = now => { const p = Math.min(1, (now - t0) / 900); this.tune(Math.round((from + (nx.f - from) * p) * 10) / 10); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+};
+$('#r-ticks').innerHTML = [88, 92, 96, 100, 104, 108].map(f => `<span style="left:${(f - 87.5) / 20.5 * 100}%">${f}</span>`).join('')
+  + STATIONS.map(s => `<i style="left:${(s.f - 87.5) / 20.5 * 100}%"></i>`).join('');
+$('#r-dial').addEventListener('input', e => { if (!Radio.on) Radio.start(); Radio.tune(+e.target.value); });
+$('#r-power').onclick = () => Radio.on ? Radio.stop() : Radio.start();
+$('#r-scan').onclick = () => Radio.scan();
+
+/* RETROSPECTIVA */
+let tourTimer = 0;
+function startTour() {
+  closeModal(); if (tab !== 'viagem') showTab('viagem');
+  touring = true; shell.classList.add('touring');
+  const seq = DAY_KEYS.flatMap(k => DAYS[k].stops.map((s, i) => [k, i])); let n = 0;
+  $('#tour-card').hidden = false;
+  const step = () => {
+    if (!touring) return;
+    if (n >= seq.length) { endTour(true); return; }
+    const [k, i] = seq[n++];
+    if (k !== dayKey) renderDay(k, { force: true });
+    selectStop(i, { silent: true });
+    const s = STOPS[i], src = store.get('photo:' + s.id, null);
+    if (Sound.enabled || Sound.wantOn) Sound.play(s.id);
+    $('#tour-img').innerHTML = src ? `<img src="${src}" alt="">` : `<div class="noimg">${n}</div>`;
+    $('#tour-day').textContent = `${DAYS[k].label} · ${s.time}`; $('#tour-title').textContent = s.title;
+    $('#tour-line').textContent = store.get('vale:' + s.id, null) ? `vale resgatado às ${store.get('vale:' + s.id)}` : s.vibe;
+    $('#tour-bar').style.width = (n / seq.length * 100) + '%';
+    tourTimer = setTimeout(step, 3800);
+  };
+  step();
+}
+function endTour(done) {
+  clearTimeout(tourTimer); touring = false; shell.classList.remove('touring'); $('#tour-card').hidden = true;
+  if (activeIdx >= 0) scrollToCard(activeIdx);
+  if (done) openRecap();
+}
+function openRecap() {
+  const ov = modal(`
+    <span class="eyebrow">Retrospectiva · ${dayName('sab', { day: 'numeric', month: 'long' })} a ${dayName('seg', { day: 'numeric', month: 'long' })}</span>
+    <h2>O nosso fim de semana</h2>
+    <div class="stats" style="margin-top:16px">${stats().map(([b, t]) => `<div><b>${b}</b><span>${t}</span></div>`).join('')}</div>
+    <p class="final-note">${esc(CONFIG.FINAL_NOTE)}</p>
+    <div class="row"><button class="btn gold" type="button" id="rc-album">Ver o álbum</button><button class="btn alt" type="button" id="rc-again" style="color:var(--wood-ink)">Rever o passeio</button></div>`, 'recap');
+  $('#rc-album', ov).onclick = () => { closeModal(); showTab('album'); };
+  $('#rc-again', ov).onclick = startTour;
+  buzz([40, 60, 40, 60, 120]);
+  Sound.init(); [523, 659, 784, 1047].forEach((f, i) => blip(Sound.ctx, Sound.master, { f, dur: 1.2, vol: .06, t: Sound.ctx.currentTime + i * .12 }));
+}
+
+/* =====================================================================
+   GOOGLE MAPS e GPS (opcionais)
+   ===================================================================== */
+let gmap = null;
+const GMAP_STYLE = [{ elementType: 'geometry', stylers: [{ color: '#d9c98a' }] }, { featureType: 'landscape.natural', stylers: [{ color: '#a1a254' }] }, { featureType: 'poi.park', stylers: [{ color: '#6a7a3c' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#7a6340' }] }, { featureType: 'water', stylers: [{ color: '#6f9fa6' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#3b2a1d' }] }, { elementType: 'labels.text.stroke', stylers: [{ color: '#f4e3b0' }] }];
+function loadGoogleMaps() {
+  if (!CONFIG.GOOGLE_MAPS_API_KEY) { toast('Mapa real precisa da chave do Google Maps'); return; }
+  if (gmap) { $('#gmap').remove(); gmap = null; return; }
+  const div = document.createElement('div'); div.id = 'gmap'; stage.appendChild(div);
+  window.__initGMap = () => {
+    const s = STOPS[Math.max(0, activeIdx)];
+    gmap = new google.maps.Map(div, { center: { lat: s.lat, lng: s.lng }, zoom: 13, mapId: CONFIG.GOOGLE_MAP_ID || undefined, styles: CONFIG.GOOGLE_MAP_ID ? undefined : GMAP_STYLE, disableDefaultUI: true, mapTypeId: 'terrain' });
+    STOPS.forEach((st, i) => { const m = new google.maps.Marker({ position: { lat: st.lat, lng: st.lng }, map: gmap, label: String(i + 1), title: st.title }); m.addListener('click', () => selectStop(i, { arrive: true })); });
+    gmapFly(s);
+  };
+  const sc = document.createElement('script'); sc.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(CONFIG.GOOGLE_MAPS_API_KEY)}&callback=__initGMap&v=weekly`;
+  sc.onerror = () => { toast('Não foi possível carregar o Google Maps aqui'); div.remove(); }; document.head.appendChild(sc);
+}
+function gmapFly(s) {
+  if (!gmap) return;
+  const target = s.is3d ? { center: { lat: s.lat, lng: s.lng }, zoom: 16, tilt: 67.5, heading: 40 } : { center: { lat: s.lat, lng: s.lng }, zoom: 15, tilt: 30, heading: 0 };
+  if (!gmap.moveCamera) { gmap.panTo(target.center); gmap.setZoom(target.zoom); return; }
+  const from = { zoom: gmap.getZoom(), tilt: gmap.getTilt() || 0, heading: gmap.getHeading() || 0 }, t0 = performance.now(); gmap.panTo(target.center);
+  const step = now => { const p = Math.min(1, (now - t0) / 2200), e = p < .5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
+    gmap.moveCamera({ zoom: from.zoom + (target.zoom - from.zoom) * e, tilt: from.tilt + (target.tilt - from.tilt) * e, heading: from.heading + (target.heading - from.heading) * e }); if (p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function haversine(a, b, c, d) { const R = 6371e3, r = Math.PI / 180, x = (c - a) * r, y = (d - b) * r; const h = Math.sin(x / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(y / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
+function startGeofence() {
+  if (!CONFIG.USE_REAL_GPS || !navigator.geolocation) return;
+  const fired = new Set();
+  navigator.geolocation.watchPosition(p => STOPS.forEach((s, i) => {
+    if (fired.has(dayKey + i) || touring) return;
+    if (haversine(p.coords.latitude, p.coords.longitude, s.lat, s.lng) < CONFIG.GEOFENCE_RADIUS_M) { fired.add(dayKey + i); selectStop(i, { arrive: true, force: true }); }
+  }), () => toast('GPS indisponível; use "Chegamos"'), { enableHighAccuracy: true, maximumAge: 15000 });
+}
+
+/* =====================================================================
+   INICIALIZAÇÃO
+   ===================================================================== */
+function layout() { computeGrid(); paintTerrain(currentMood); if (!isLocked(dayKey) || touring) buildRoute(); drawStars(); setCamera(cam); }
+function boot() {
+  $('#cover-for').textContent = 'para você, ' + CONFIG.HER_NAME;
+  buildWorld(); computeGrid(); paintTerrain(currentMood); drawStars();
+  const now = new Date(), dIdx = Math.floor((now - tripDate('00:00')) / 86400000), key = DAY_KEYS[dIdx] || 'sab';
+  renderDay(key);
+  if (DAY_KEYS[dIdx] && !isLocked(key)) { let live = -1; STOPS.forEach((s, i) => { if (now >= tripDate(s.time, DAYS[key].off)) live = i; }); if (live >= 0) selectStop(live, { silent: true }); }
+  setInterval(updateWhen, 30000); updateWhen();
+  requestAnimationFrame(t => Player.tick(t));
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(layout, 200); });
+
+  $('#days').addEventListener('click', e => { const b = e.target.closest('[data-day]'); if (b && !touring) { if (tab !== 'viagem') showTab('viagem'); renderDay(b.dataset.day); } });
+  $('#tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) { buzz(8); showTab(b.dataset.tab); } });
+  $('#start').onclick = () => {
+    $('#cover').classList.add('gone'); Sound.wantOn = true;
+    if (!isLocked(dayKey)) selectStop(activeIdx >= 0 ? activeIdx : 0, { arrive: true, force: true });
+    startGeofence();
+    try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+  };
+  $('#btn-sound').onclick = () => {
+    if (Radio.on) { Radio.resume = false; Radio.stop(); return; }
+    if (Sound.enabled) { Sound.off(); Sound.wantOn = false; } else { Sound.wantOn = true; Sound.play((STOPS[Math.max(0, activeIdx)] || DAYS.sab.stops[0]).id); }
+  };
+  $('#p-play').onclick = () => $('#btn-sound').click();
+  $('#p-next').onclick = () => { if (Radio.on) Radio.scan(); else Player.next(1); };
+  $('#compass').onclick = overview;
+  $('#btn-gmaps').onclick = loadGoogleMaps;
+  $('#tour-skip').onclick = () => endTour(true);
+  $('#nos-retro').onclick = startTour;
+  $('#nos-letter').onclick = openLetter;
+}
+boot();
+</script>
+
+</body>
+</html>
