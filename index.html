@@ -428,6 +428,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance
   </nav>
 
   <div class="embers" id="embers" aria-hidden="true"></div>
+  <div id="yt-wrap" aria-hidden="true" style="position:absolute;left:-10000px;top:0;width:200px;height:200px;overflow:hidden"><div id="yt"></div></div>
   <div id="modal-root"></div>
 
   <div class="cover" id="cover" role="dialog" aria-modal="true" aria-labelledby="cover-title">
@@ -471,6 +472,7 @@ e o que você quer viver com ela daqui pra frente.
 Ela só abre às 20:30 de sábado, com o fondue já na mesa.`,
   BIRTHDAY: '2026-10-18',               // aniversário dela: a capa vira cartão de aniversário
   NOSSA_MUSICA: ['Ela Une Todas as Coisas', 'Jorge Vercillo'],
+  NOSSA_MUSICA_YOUTUBE: '8FG3JhhKx8c', // toca em loop no app (YouTube); vazio = desliga
   RADIO_DEDICATORIA: `Alô, alô, ouvintes da Serra da Mantiqueira!
 Interrompemos a programação para um recado especial.
 
@@ -647,7 +649,7 @@ const Sound = {
     if (this.ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC();
-    this.master = this.ctx.createGain(); this.master.gain.value = .9; this.master.connect(this.ctx.destination);
+    this.master = this.ctx.createGain(); this.master.gain.value = Song.want ? .3 : .9; this.master.connect(this.ctx.destination);
     const sr = this.ctx.sampleRate, len = sr * 3;
     this.white = this.ctx.createBuffer(1, len, sr); const w = this.white.getChannelData(0);
     for (let i = 0; i < len; i++) w[i] = Math.random() * 2 - 1;
@@ -819,12 +821,50 @@ const SCENES = {
   retorno: [P.road(.35), P.wind(.08, 700), P.pad(.15)]
 };
 function syncSoundUI() {
-  const on = Sound.enabled;
-  $('#btn-sound').setAttribute('aria-pressed', on); $('#btn-sound').setAttribute('aria-label', on ? 'Desligar o som' : 'Ligar o som');
+  const on = Sound.enabled, songOn = Song.want;
+  $('#btn-sound').setAttribute('aria-pressed', on); $('#btn-sound').setAttribute('aria-label', on ? 'Desligar o som ambiente' : 'Ligar o som ambiente');
   $('#snd-wave').style.opacity = on ? 1 : .2;
-  $('#player').classList.toggle('playing', on);
-  $('#p-play').setAttribute('aria-label', on ? 'Pausar' : 'Tocar');
-  $('#p-play-ico').innerHTML = on ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+  $('#player').classList.toggle('playing', songOn || on);
+  $('#p-play').setAttribute('aria-label', songOn ? 'Pausar a nossa música' : 'Tocar a nossa música');
+  $('#p-play-ico').innerHTML = songOn ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+  if (Player.stop) Player.render();
+}
+
+/* =====================================================================
+   A NOSSA MÚSICA — toca em loop pelo player do YouTube; o som ambiente fica baixinho por baixo
+   ===================================================================== */
+const Song = {
+  id: CONFIG.NOSSA_MUSICA_YOUTUBE, player: null, ready: false, want: false, failed: false,
+  load() {
+    if (!this.id) return;
+    window.onYouTubeIframeAPIReady = () => {
+      this.player = new YT.Player('yt', { width: 200, height: 200, videoId: this.id,
+        playerVars: { autoplay: 0, controls: 0, loop: 1, playlist: this.id, playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => { this.ready = true; this.player.setVolume(85); if (this.want) this.player.playVideo(); },
+          onStateChange: e => { if (e.data === 0 && this.want) { this.player.seekTo(0); this.player.playVideo(); } },
+          onError: () => { this.failed = true; this.want = false; duck(); syncSoundUI(); toast('Não consegui tocar pelo YouTube. Toque no ↗ do player para abrir.'); }
+        } });
+    };
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => { this.failed = true; }; document.head.appendChild(s);
+  },
+  play() {
+    if (!this.id || this.failed) return false;
+    this.want = true; if (this.ready) this.player.playVideo();
+    duck(); syncSoundUI(); return true;
+  },
+  pause() { this.want = false; if (this.ready) this.player.pauseVideo(); duck(); syncSoundUI(); },
+  toggle() { this.want ? this.pause() : this.play(); },
+  progress() { try { return this.ready ? [this.player.getCurrentTime() || 0, this.player.getDuration() || 1] : [0, 1]; } catch (e) { return [0, 1]; } }
+};
+function playOurSong() { // sai do rádio (se estiver nele) e toca a nossa música
+  if (Radio.on) { Radio.songWas = false; Radio.stop(); }
+  if (Song.play()) toast('Tocando a nossa música');
+}
+function duck() { // som ambiente baixa enquanto a nossa música toca
+  if (!Sound.ctx) return;
+  Sound.master.gain.setTargetAtTime(Song.want ? .3 : .9, Sound.ctx.currentTime, .4);
 }
 
 /* =====================================================================
@@ -1113,6 +1153,12 @@ const Player = {
   stop: null, idx: 0, pos: 0, last: 0,
   load(s) { if (this.stop === s) return; this.stop = s; this.idx = 0; this.pos = 0; this.render(); },
   render() {
+    if (Radio.on) return;
+    if (Song.want) {
+      const [st, sa] = CONFIG.NOSSA_MUSICA;
+      $('#p-vibe').textContent = 'A nossa música'; $('#p-track').innerHTML = `${esc(st)} <span>· ${esc(sa)}</span>`;
+      $('#p-link').href = 'https://www.youtube.com/watch?v=' + Song.id; return;
+    }
     const s = this.stop, [title, artist] = s.tracks[this.idx];
     $('#p-vibe').textContent = s.vibe; $('#p-track').innerHTML = `${esc(title)} <span>· ${esc(artist)}</span>`;
     $('#p-link').href = CONFIG.SPOTIFY_PLAYLISTS[s.id] || 'https://open.spotify.com/search/' + encodeURIComponent(title + ' ' + artist);
@@ -1120,7 +1166,8 @@ const Player = {
   next(d = 1) { const n = this.stop.tracks.length; this.idx = (this.idx + d + n) % n; this.pos = 0; this.render(); },
   tick(now) {
     const dt = this.last ? (now - this.last) / 1000 : 0; this.last = now;
-    if (Sound.enabled && this.stop && !Radio.on) { this.pos += dt; const dur = this.stop.tracks[this.idx][2]; if (this.pos >= dur) this.next(); $('#p-bar').style.width = (this.pos / dur * 100) + '%'; }
+    if (Song.want && !Radio.on) { const [p, d] = Song.progress(); $('#p-bar').style.width = (p / d * 100) + '%'; }
+    else if (Sound.enabled && this.stop && !Radio.on) { this.pos += dt; const dur = this.stop.tracks[this.idx][2]; if (this.pos >= dur) this.next(); $('#p-bar').style.width = (this.pos / dur * 100) + '%'; }
     requestAnimationFrame(t => this.tick(t));
   }
 };
@@ -1276,6 +1323,7 @@ const Radio = {
     if (this.on) return;
     Sound.init(); const ctx = Sound.ctx; ctx.resume();
     this.resume = Sound.enabled; Sound.stopScene();
+    this.songWas = Song.want; if (Song.want) Song.pause();
     const out = ctx.createGain(); out.connect(Sound.master); out.gain.setValueAtTime(0, ctx.currentTime); out.gain.linearRampToValueAtTime(1, ctx.currentTime + .6);
     const st = loopSrc(ctx, Sound.white), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = .4;
     const sg = ctx.createGain(); sg.gain.value = .2; st.connect(bp); bp.connect(sg); sg.connect(out);
@@ -1298,6 +1346,7 @@ const Radio = {
     $('#r-name').textContent = ''; $('#r-desc').textContent = 'desligado'; $('#r-dedica').textContent = ''; $('#r-song').hidden = true;
     if (Player.stop) Player.render();
     if (this.resume && STOPS[Math.max(0, activeIdx)]) Sound.play(STOPS[Math.max(0, activeIdx)].id); else { Sound.enabled = false; syncSoundUI(); }
+    if (this.songWas) { this.songWas = false; Song.play(); }
   },
   tune(v) {
     this.freq = v; store.set('radio-f', v); $('#r-freq').textContent = v.toFixed(1); $('#r-dial').value = v;
@@ -1312,7 +1361,9 @@ const Radio = {
       const text = CONFIG.RADIO_DEDICATORIA.replace(/\{ELA\}/g, CONFIG.HER_NAME).replace(/\{EU\}/g, CONFIG.MY_NAME);
       if (!ded.textContent) { ded.textContent = text; buzz([20, 30, 20]); }
       $('#r-song').hidden = false;
-      if (!this.spoken && 'speechSynthesis' in window) { this.spoken = true; try { const u = new SpeechSynthesisUtterance(text.replace(/\n/g, ' ')); u.lang = 'pt-BR'; u.rate = .95; u.pitch = .85; speechSynthesis.speak(u); } catch (e) {} }
+      if (!this.spoken && 'speechSynthesis' in window) { this.spoken = true; try { const u = new SpeechSynthesisUtterance(text.replace(/\n/g, ' ')); u.lang = 'pt-BR'; u.rate = .95; u.pitch = .85;
+        u.onend = () => { if (!Radio.on || !Song.id || Song.failed) return; setTimeout(playOurSong, 900); }; // "a próxima música é a nossa"
+        speechSynthesis.speak(u); } catch (e) {} }
     } else { ded.textContent = ''; $('#r-song').hidden = true; }
   },
   scan() {
@@ -1433,8 +1484,11 @@ function boot() {
 
   $('#days').addEventListener('click', e => { const b = e.target.closest('[data-day]'); if (b && !touring) { if (tab !== 'viagem') showTab('viagem'); renderDay(b.dataset.day); } });
   $('#tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) { buzz(8); showTab(b.dataset.tab); } });
+  Song.load();
+  $('#r-song').addEventListener('click', e => { if (Song.id && !Song.failed) { e.preventDefault(); playOurSong(); } });
   $('#start').onclick = () => {
     $('#cover').classList.add('gone'); Sound.wantOn = true;
+    Song.play();
     if (!isLocked(dayKey)) selectStop(activeIdx >= 0 ? activeIdx : 0, { arrive: true, force: true });
     startGeofence();
     try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
@@ -1443,7 +1497,10 @@ function boot() {
     if (Radio.on) { Radio.resume = false; Radio.stop(); return; }
     if (Sound.enabled) { Sound.off(); Sound.wantOn = false; } else { Sound.wantOn = true; Sound.play((STOPS[Math.max(0, activeIdx)] || DAYS.sab.stops[0]).id); }
   };
-  $('#p-play').onclick = () => $('#btn-sound').click();
+  $('#p-play').onclick = () => {
+    if (Radio.on) { $('#btn-sound').click(); return; }
+    if (Song.id && !Song.failed) Song.toggle(); else $('#btn-sound').click();
+  };
   $('#p-next').onclick = () => { if (Radio.on) Radio.scan(); else Player.next(1); };
   $('#compass').onclick = overview;
   $('#btn-gmaps').onclick = loadGoogleMaps;
