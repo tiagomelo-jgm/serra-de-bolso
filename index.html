@@ -380,6 +380,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance
         </div>
       </div>
       <p class="dedica" id="r-dedica"></p>
+      <a class="btn gold" id="r-song" href="https://open.spotify.com/search" target="_blank" rel="noopener" hidden style="text-decoration:none;margin-top:12px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg><span id="r-song-name">A nossa música</span></a>
       <p class="hint">Quatro estações escondidas no dial. Uma delas tem recado. Bom pra subida e pra descida da serra.</p>
     </section>
 
@@ -468,10 +469,23 @@ o que você sente quando olha pra ela do outro lado da mesa,
 e o que você quer viver com ela daqui pra frente.
 
 Ela só abre às 20:30 de sábado, com o fondue já na mesa.`,
+  BIRTHDAY: '2026-10-18',               // aniversário dela: a capa vira cartão de aniversário
+  NOSSA_MUSICA: ['Ela Une Todas as Coisas', 'Jorge Vercillo'],
   RADIO_DEDICATORIA: `Alô, alô, ouvintes da Serra da Mantiqueira!
-Essa vai com todo o carinho para {ELA},
-que está aqui do lado, subindo a serra comigo.
-Obrigado por topar essa aventura. Te amo.`,
+Interrompemos a programação para um recado especial.
+
+Essa vai para {ELA}, que acabou de fazer aniversário
+e mesmo assim quem ganhou o presente fui eu:
+ter você aqui do lado, subindo a serra comigo.
+
+Mais um ano seu, e eu tenho a sorte de estar nele.
+Obrigado por cada risada, cada viagem,
+e por cada dia comum que você deixa bonito.
+
+Feliz aniversário, meu amor.
+A próxima música é a nossa: Ela Une Todas as Coisas, de Jorge Vercillo.
+Porque é exatamente isso que você faz comigo.
+Te amo.`,
   FINAL_NOTE: `Três dias, um monte de curvas, água gelada e queijo derretido.
 Obrigado por cada minuto.
 Já estou pensando na próxima.`
@@ -509,7 +523,7 @@ const DAYS = {
       perguntas: ['Qual foi a coisa mais corajosa que você já fez?', 'Que aventura a gente ainda precisa viver junto?', 'Se você pudesse ter qualquer habilidade instantânea, qual seria?'] },
     { id: 'fondue', time: '20:30', title: 'Fondue no Borbulha', place: 'Maringá · Visconde de Mauá', mood: 'noite', letter: true, x: .56, y: .26, lat: -22.3310, lng: -44.5440,
       desc: 'Frio lá fora, queijo derretendo, chocolate depois e vinho na taça. Hoje tem uma carta lacrada esperando por ela.',
-      vibe: 'Jazz à Luz da Lareira', tracks: [['La Vie en Rose', 'Louis Armstrong', 205], ['Corcovado', 'Stan Getz & João Gilberto', 254], ['At Last', 'Etta James', 180], ['Fly Me to the Moon', 'Frank Sinatra', 148]],
+      vibe: 'Jazz à Luz da Lareira', tracks: [['Ela Une Todas as Coisas', 'Jorge Vercillo', 240], ['La Vie en Rose', 'Louis Armstrong', 205], ['Corcovado', 'Stan Getz & João Gilberto', 254], ['At Last', 'Etta James', 180], ['Fly Me to the Moon', 'Frank Sinatra', 148]],
       vale: 'Vale uma dança lenta. Onde ela quiser, quando ela quiser.',
       perguntas: ['Em que momento você soube que gostava de mim?', 'Daqui a 10 anos, onde você quer que a gente esteja num sábado à noite?', 'Qual pequena coisa minha te faz sorrir sem eu saber?'] }
   ], legs: [
@@ -1281,7 +1295,7 @@ const Radio = {
     try { speechSynthesis.cancel(); } catch (e) {}
     setTimeout(() => { chans.forEach(c => c.part.end()); try { st.stop(); } catch (e) {} out.disconnect(); }, 700);
     this.on = false; $('#r-power').textContent = 'Ligar'; $('#r-power').classList.remove('on');
-    $('#r-name').textContent = ''; $('#r-desc').textContent = 'desligado'; $('#r-dedica').textContent = '';
+    $('#r-name').textContent = ''; $('#r-desc').textContent = 'desligado'; $('#r-dedica').textContent = ''; $('#r-song').hidden = true;
     if (Player.stop) Player.render();
     if (this.resume && STOPS[Math.max(0, activeIdx)]) Sound.play(STOPS[Math.max(0, activeIdx)].id); else { Sound.enabled = false; syncSoundUI(); }
   },
@@ -1297,8 +1311,9 @@ const Radio = {
     if (locked && best.dedica) {
       const text = CONFIG.RADIO_DEDICATORIA.replace(/\{ELA\}/g, CONFIG.HER_NAME).replace(/\{EU\}/g, CONFIG.MY_NAME);
       if (!ded.textContent) { ded.textContent = text; buzz([20, 30, 20]); }
+      $('#r-song').hidden = false;
       if (!this.spoken && 'speechSynthesis' in window) { this.spoken = true; try { const u = new SpeechSynthesisUtterance(text.replace(/\n/g, ' ')); u.lang = 'pt-BR'; u.rate = .95; u.pitch = .85; speechSynthesis.speak(u); } catch (e) {} }
-    } else ded.textContent = '';
+    } else { ded.textContent = ''; $('#r-song').hidden = true; }
   },
   scan() {
     if (!this.on) this.start();
@@ -1399,6 +1414,15 @@ function startGeofence() {
 function layout() { computeGrid(); paintTerrain(currentMood); if (!isLocked(dayKey) || touring) buildRoute(); drawStars(); setCamera(cam); }
 function boot() {
   $('#cover-for').textContent = 'para você, ' + CONFIG.HER_NAME;
+  const [song, artist] = CONFIG.NOSSA_MUSICA;
+  $('#r-song-name').textContent = `Tocar ${song} · ${artist}`;
+  $('#r-song').href = 'https://open.spotify.com/search/' + encodeURIComponent(song + ' ' + artist);
+  const bday = new Date(CONFIG.BIRTHDAY + 'T00:00:00'), today = new Date();
+  if (CONFIG.BIRTHDAY && today >= bday && today < tripDate('23:59', 2)) { // modo aniversário
+    const isToday = today.toDateString() === bday.toDateString();
+    $('#cover-for').textContent = isToday ? `Feliz aniversário, ${CONFIG.HER_NAME}!` : `Ainda é aniversário, ${CONFIG.HER_NAME}`;
+    $('#cover .cover-inner p').textContent = 'Seu presente de aniversário: três dias na serra. Penedo, cachoeiras geladas, lareira, fondue e pizza na pedra. Este app é o mapa, e tem surpresa escondida em cada parada.';
+  }
   buildWorld(); computeGrid(); paintTerrain(currentMood); drawStars();
   const now = new Date(), dIdx = Math.floor((now - tripDate('00:00')) / 86400000), key = DAY_KEYS[dIdx] || 'sab';
   renderDay(key);
